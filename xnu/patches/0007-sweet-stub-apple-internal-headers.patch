@@ -70,7 +70,7 @@ index 0000000..711cdef
 + * register settings applied in start.s) are not in the open source drop,
 + * and none of them exist on Cortex-A76/A55. APPLY_TUNABLES does nothing.
 + */
-+.macro APPLY_TUNABLES
++.macro APPLY_TUNABLES midr, tmp1, tmp2
 +.endmacro
 diff --git a/osfmk/kern/task.c b/osfmk/kern/task.c
 index 24ed326..67c5f79 100644
