@@ -12,6 +12,9 @@ on:
       machine_config:
         description: xnu MACHINE_CONFIG
         default: VMAPPLE
+      keep_going:
+        description: make -k (collect all compile errors in one run)
+        default: "true"
   push:
     branches: [main]
     paths:
@@ -54,6 +57,9 @@ jobs:
 
       - name: Build
         working-directory: dxb
+        env:
+          # keep going after errors so one run reports every compile failure
+          MAKEFLAGS: ${{ inputs.keep_going == 'false' && '' || '-k' }}
         run: bash build.sh
 
       - name: Collect

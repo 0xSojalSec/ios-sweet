@@ -4,19 +4,28 @@
   remotezip.py URL                      list members
   remotezip.py URL PATTERN OUTDIR       extract members whose name contains PATTERN
 """
-import os, struct, sys, urllib.request, zlib
+import os, struct, subprocess, sys, zlib
+
+
+# curl rather than urllib: urllib hangs on this host's broken IPv6 route to
+# Apple's CDN, curl falls back to IPv4.
+def curl(*args):
+    return subprocess.run(['curl', '-sfL', '--max-time', '300', *args],
+                          check=True, capture_output=True).stdout
 
 
 def get(url, start, end):
-    req = urllib.request.Request(url, headers={'Range': f'bytes={start}-{end}'})
-    with urllib.request.urlopen(req) as r:
-        return r.read()
+    data = curl('-r', f'{start}-{end}', url)
+    # A server ignoring Range would send the whole multi-GB file.
+    assert len(data) == end - start + 1, f'bad range reply ({len(data)} bytes)'
+    return data
 
 
 def size_of(url):
-    req = urllib.request.Request(url, method='HEAD')
-    with urllib.request.urlopen(req) as r:
-        return int(r.headers['Content-Length'])
+    for line in curl('-I', url).decode().splitlines():
+        if line.lower().startswith('content-length:'):
+            return int(line.split(':')[1])
+    raise RuntimeError('no Content-Length')
 
 
 def central_dir(url):
