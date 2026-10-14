@@ -65,3 +65,22 @@
   expert) compiled into the kernel and matched via iokit/KernelConfigTables.cpp -> no closed kexts needed.
 - Debug: xnu patch 0003 sweet-fbcon = kprintf drawn on the framebuffer (ADT node "sweet-fbcon").
 - ADT /arm-io ranges must not map to parent 0 (pe_arm_get_soc_base_phys()==0 disables serial): use parent 0x1000000.
+
+## Status 2026-10-14 late: first XNU boot attempt
+- SWEET kernel builds (CI run 38635343732, patches 0001-0009). Verified offline: arm64, no PAC, no >v8.2 code,
+  70300 classic relocs all in range (slide 0 = no loader work), entry = __start.
+- Boot: shim loader worked (initrd 0x846F0000-0x855FE3E0, BOOTARG 0xB1FF8000, JUMP 0xB146A488) but screen stayed
+  red -> xnu died/hung before serial_init (fbcon). kprintf is a no-op before STARTUP_SUB_KPRINTF.
+- NEXT (patch 0010, designed, not written): early fb debug channel
+  1. start.s start_first_cpu (after mov x20,x0 / mov x21,#0): PA marker band (MMU off, direct store to 0x9c000000).
+  2. start.s after both create_bootstrap_mapping calls: add ONE block entry to the existing V=P L2 table
+     (x25 + 2*PGBYTES; do NOT call create_bootstrap_mapping again: fb and RAM share L1 entry 0, it would replace
+     the L2 table). Entry = TYPE_BLOCK|VALID|SH(OUTER)|ATTRINDX(CACHE_ATTRINDX_WRITECOMB=1)|AF|PNX|NX|0x9c000000,
+     index = (va & ARM_TT_L2_INDEX_MASK) >> ARM_TT_L2_SHIFT.
+  3. new osfmk/arm64/sweet_early.c (+files.arm64 entry): sweet_early_mark(n) colored bands at screen bottom and
+     sweet_early_putc using iso_font via VA=PA while the bootstrap TTBR0 is live; disable before
+     arm_vm_init's set_mmu_ttb(invalid_ttep) (arm_vm_init.c:2148).
+  4. markers in arm_init after PE_init_platform, ml_parse_cpu_topology, cpu_bootstrap, kernel_startup_bootstrap,
+     cpu_init, before arm_vm_init.
+  5. panic hook at top of panic_trap_to_debugger: va_copy + _doprnt(fmt, &copy, sweet_early_putc, 16).
+  Verify with tools/xnu-cc.py (compile+symbols) and patch-order simulation before the single CI run.
