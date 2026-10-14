@@ -52,12 +52,6 @@ jobs:
           xcode-select -p
           ls -d /Applications/Xcode*.app
 
-      - name: KDK cache
-        uses: actions/cache@v4
-        with:
-          path: /tmp/KDK.dmg
-          key: kdk-${{ env.MACOS_VERSION }}
-
       - name: Build
         working-directory: dxb
         run: bash build.sh
