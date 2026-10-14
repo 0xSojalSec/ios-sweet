@@ -71,13 +71,25 @@ jobs:
           MAKEFLAGS: ${{ inputs.keep_going == 'false' && '' || '-k' }}
         run: bash build.sh
 
+      - name: Inspect closed KDK support libs
+        if: always()
+        run: |
+          mkdir -p out/kdk-libs
+          for lib in /Library/Developer/KDKs/*/System/Library/KernelSupport/lib*.a; do
+            b=$(basename "$lib" .a)
+            ar t "$lib" > "out/kdk-libs/$b.members.txt" 2>&1 || true
+            nm -m "$lib" > "out/kdk-libs/$b.nm.txt" 2>&1 || true
+            lipo -info "$lib" >> out/kdk-libs/arch.txt 2>&1 || true
+          done
+          ls -la out/kdk-libs
+
       - name: Collect
         if: always()
         run: |
           mkdir -p out
           cp -R dxb/fakeroot/System/Library/Kernels/. out/ 2>/dev/null || true
           ls -la out
-          (cd out && shasum -a 256 * > SHA256SUMS) || true
+          (cd out && shasum -a 256 kernel.* > SHA256SUMS) || true
 
       - uses: actions/upload-artifact@v4
         if: always()
