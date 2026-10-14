@@ -140,7 +140,8 @@ const char *loader_boot(uintptr_t dtb)
 	con_hex("JUMP", entry_pa);
 	con_str("XNU", "jumping (fbcon clears screen)");
 
-	__asm__ volatile("dsb sy; isb" ::: "memory");
+	/* Everything was written with the MMU and caches off; drop any stale I-cache lines too. */
+	__asm__ volatile("dsb sy; ic iallu; dsb sy; isb" ::: "memory");
 	((xnu_entry_t)entry_pa)(ba_pa);
 	return "xnu returned";
 }
