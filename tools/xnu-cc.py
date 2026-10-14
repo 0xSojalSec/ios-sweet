@@ -6,6 +6,7 @@
 LOG        `gh run view --log` output of an xnu.yml run (VERBOSE=YES make)
 BUILDTREE  extracted xnu-buildtree artifact (build/xnu.obj, xnu/, fakeroot/, ...)
 FILTER     only compile sources whose path contains one of these strings
+           a full path relative to xnu/ also compiles newly added sources
 
 Edit the sources under BUILDTREE/xnu, re-run, and turn the result into
 patches with `git diff` there. Uses the local Apple-fork clang (swiftlang).
@@ -127,9 +128,22 @@ def main():
             if t:
                 cmds[src] = t
                 synth += 1
+    # New patch sources are absent from the previous CI artifact's Makefiles.
+    # An explicit source path can still borrow this component's compile flags.
+    for f in filters:
+        if os.path.isfile(os.path.join(bt, 'xnu', f)) and f.endswith(('.c', '.cpp', '.s', '.S')):
+            src = CI_DXB + '/xnu/' + f
+            if src not in cmds:
+                t = template_for(src, cmds)
+                if t:
+                    cmds[src] = t
+                    synth += 1
     print(f'{synth} commands synthesized from Makefile source lists', file=sys.stderr)
     if filters:
         cmds = {k: v for k, v in cmds.items() if any(f in k for f in filters)}
+    if not cmds:
+        print('no compile commands matched', file=sys.stderr)
+        return 1
     cdirs = component_dirs(bt)
     print(f'{len(cmds)} files, build dirs: {sorted(cdirs)}', file=sys.stderr)
     errors, failed = Counter(), []

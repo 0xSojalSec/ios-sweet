@@ -1,5 +1,25 @@
 # iOS 16 on sweet (Redmi Note 10 Pro, SM7150) - working notes
 
+## Agent handoff / active work (2026-10-14)
+- User wants persistent progress toward iOS 16, commits for completed changes, builds through `gh` / GitHub Actions.
+- Keep this file current at every milestone so another agent can resume immediately, including when usage limits interrupt a session.
+- Current task: patch `0010` is implemented and locally compiled; commit/push, then CI and a temporary boot.
+- Starting repo commit: `67576e7`, clean `main`. Latest successful kernel CI: `38635343732`.
+- Local source sandbox: `research/bt13/xnu` (git baseline `623b060`, patches 0001-0008 already in baseline; uncommitted export edits correspond to patch 0009). Preserve those edits when producing patch 0010.
+- Local compile log: `research/run13.log`; extracted headers/build dirs: `research/bt13`; kernel: `xnu/out/kernel.development.sweet`.
+- Phone is currently reachable through adb. Never flash partitions for bring-up; use `fastboot boot` with the shim image.
+- Patch `0010` lives in `xnu/patches/0010-sweet-early-framebuffer-debug.patch`. Its exact compiled sources are under `research/bt13/xnu`; generated objects are in `research/early-objs`.
+- Local checks passed: all 5 changed/new translation units compiled to arm64 Mach-O objects; new console only imports `_doprnt` and `iso_font` (both exist in the previous kernel). All 10 patches applied to a temporary upstream git index in CI order, and all 7 resulting changed source files matched the local compile inputs.
+- Reproduce changed-file compilation: `XNU_CC_OBJDIR="$PWD/research/early-objs" python3 tools/xnu-cc.py research/run13.log research/bt13 arm_init.c arm_vm_init.c kern/debug.c arm64/start.s osfmk/arm64/sweet_early.c --per-file` (create the output directory first). The helper now accepts explicit new source paths absent from the old artifact's Makefiles and rejects empty selections.
+- No new device boot result yet. Next agent: inspect this section and the latest status below before repeating any work.
+
+### Patch 0010 screen legend
+- Bottom-left white 64x32 tile: assembly entered `start_first_cpu`, before page tables/MMU.
+- Text `SWEET EARLY 1`: entered `arm_init` with MMU on; 2: platform expert done; 3: CPU topology done; 4: CPU bootstrap done; 5: startup bootstrap done; 6: CPU init done; 7: entering `arm_vm_init`; 8: leaving bootstrap TTBR0.
+- `SWEET EARLY PANIC:` prints a copy of panic arguments before normal panic handling needs per-CPU/thread state.
+- Console is disabled immediately before bootstrap TTBR0 is invalidated. Normal fbcon from patch 0003 should then take over in `serial_init`.
+- Screen contents require a physical observation from the user: adb cannot capture a framebuffer after Android has been replaced by a bare-metal kernel.
+
 ## Layout
 - `backup/`  partition dumps + full sdb..sdf LUNs, `SHA256SUMS` (all verified on-device == local)
 - `dtb/`     live FDT (from OrangeFox), PixelOS boot.img dtb, dtbo, dts versions
