@@ -52,7 +52,10 @@ jobs:
 
       - name: Deps
         run: |
-          brew install jq gum xcodes bash cmake ninja
+          brew install jq gum bash cmake ninja
+          # build.sh only checks that xcodes exists (Xcode is preinstalled); no bottle on macOS 14
+          printf '#!/bin/sh\nexit 0\n' | sudo tee /usr/local/bin/xcodes >/dev/null
+          sudo chmod +x /usr/local/bin/xcodes
           sw_vers
           ls -d /Applications/Xcode*.app
           XC=$(ls -d /Applications/Xcode_*.app | sort -V | head -1)
