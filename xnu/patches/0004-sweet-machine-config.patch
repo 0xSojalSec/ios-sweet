@@ -199,6 +199,20 @@ index 3ad743f..4ec6989 100644
  }
  #else
  void
+diff --git a/pexpert/pexpert/arm64/Makefile b/pexpert/pexpert/arm64/Makefile
+index 8226b8c..c7d274f 100644
+--- a/pexpert/pexpert/arm64/Makefile
++++ b/pexpert/pexpert/arm64/Makefile
+@@ -17,7 +17,8 @@ PRIVATE_KERNELFILES = \
+ 	boot.h \
+ 	H13.h \
+ 	VMAPPLE.h \
+-	BCM2837.h
++	BCM2837.h \
++	SWEET.h
+ 
+ 
+ # Headers installed into System.framework/PrivateHeaders (userspace internal SDK only).
 diff --git a/pexpert/pexpert/arm64/SWEET.h b/pexpert/pexpert/arm64/SWEET.h
 new file mode 100644
 index 0000000..a044ad0
