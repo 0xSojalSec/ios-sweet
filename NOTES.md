@@ -3,16 +3,18 @@
 ## Agent handoff / active work (2026-10-14)
 - User wants persistent progress toward iOS 16, commits for completed changes, builds through `gh` / GitHub Actions.
 - Keep this file current at every milestone so another agent can resume immediately, including when usage limits interrupt a session.
-- Current task: patch `0010` is implemented, locally compiled, committed and pushed as `0f35556`. CI run `38638702083` is queued/running; await its result, then package and temporarily boot.
+- Current task: patch `0010` is implemented, locally compiled, committed and pushed as `0f35556`. CI run `38638702083` PASSED (4m7s). The new temporary boot image is packaged; boot it and obtain the last visible screen marker/panic from the user.
 - Starting repo commit: `67576e7`, clean `main`. Latest successful kernel CI: `38635343732`.
 - Local source sandbox: `research/bt13/xnu` (git baseline `623b060`, patches 0001-0008 already in baseline; uncommitted export edits correspond to patch 0009). Preserve those edits when producing patch 0010.
-- Local compile log: `research/run13.log`; extracted headers/build dirs: `research/bt13`; kernel: `xnu/out/kernel.development.sweet`.
+- Previous compile log/tree: `research/run13.log`, `research/bt13`; previous kernel: `xnu/out/kernel.development.sweet`. New successful log/tree: `research/run14.log`, `research/bt14`; new kernel: `xnu/out-0010/kernel.development.sweet`.
 - Phone is currently reachable through adb. Never flash partitions for bring-up; use `fastboot boot` with the shim image.
 - Patch `0010` lives in `xnu/patches/0010-sweet-early-framebuffer-debug.patch`. Its exact compiled sources are under `research/bt13/xnu`; generated objects are in `research/early-objs`.
 - Local checks passed: all 5 changed/new translation units compiled to arm64 Mach-O objects; new console only imports `_doprnt` and `iso_font` (both exist in the previous kernel). All 10 patches applied to a temporary upstream git index in CI order, and all 7 resulting changed source files matched the local compile inputs.
 - Reproduce changed-file compilation: `XNU_CC_OBJDIR="$PWD/research/early-objs" python3 tools/xnu-cc.py research/run13.log research/bt13 arm_init.c arm_vm_init.c kern/debug.c arm64/start.s osfmk/arm64/sweet_early.c --per-file` (create the output directory first). The helper now accepts explicit new source paths absent from the old artifact's Makefiles and rejects empty selections.
 - No new device boot result yet. Next agent: inspect this section and the latest status below before repeating any work.
-- CI: https://github.com/dipa-studio/ios-sweet/actions/runs/38638702083 (triggered by push, no duplicate dispatch needed).
+- CI: https://github.com/dipa-studio/ios-sweet/actions/runs/38638702083 (success; artifacts and full log downloaded).
+- New image: `shim/out/shim-boot-0010.img` (16,412,672 bytes, SHA256 `ed2c270e0081bad5ff517be415f9bfe8805463aea7866732203fa97ac737e64e`). Previous image preserved as `shim/out/shim-boot-pre0010.img`.
+- New kernel SHA256: `3ee05270cc291c49589a101678f904b1b69cb2f2575e05398bce8a4e052f409a`. Artifact checksums passed; arm64 (not arm64e), early-console symbols present. Payload entry VA `0xfffffe000746a488` -> PA `0xb146a488`; kernel end PA `0xb1ff4000`. Command line remains `debug=0xc serial=3 cpus=1 keepsyms=1`.
 
 ### Patch 0010 screen legend
 - Bottom-left white 64x32 tile: assembly entered `start_first_cpu`, before page tables/MMU.
@@ -92,7 +94,7 @@
   70300 classic relocs all in range (slide 0 = no loader work), entry = __start.
 - Boot: shim loader worked (initrd 0x846F0000-0x855FE3E0, BOOTARG 0xB1FF8000, JUMP 0xB146A488) but screen stayed
   red -> xnu died/hung before serial_init (fbcon). kprintf is a no-op before STARTUP_SUB_KPRINTF.
-- NEXT (patch 0010, designed, not written): early fb debug channel
+- Historical next-step plan (patch 0010, now implemented and built; see active handoff above): early fb debug channel
   1. start.s start_first_cpu (after mov x20,x0 / mov x21,#0): PA marker band (MMU off, direct store to 0x9c000000).
   2. start.s after both create_bootstrap_mapping calls: add ONE block entry to the existing V=P L2 table
      (x25 + 2*PGBYTES; do NOT call create_bootstrap_mapping again: fb and RAM share L1 entry 0, it would replace

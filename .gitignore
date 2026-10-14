@@ -6,4 +6,5 @@ recovery/
 research/
 shim/out/
 xnu/out/
+xnu/out-*/
 __pycache__/
