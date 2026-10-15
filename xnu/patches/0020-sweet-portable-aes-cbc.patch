@@ -70,7 +70,7 @@ diff --git a/libkern/conf/files b/libkern/conf/files
 diff --git a/libkern/conf/Makefile.template b/libkern/conf/Makefile.template
 --- a/libkern/conf/Makefile.template
 +++ b/libkern/conf/Makefile.template
-@@ -18,6 +18,17 @@
+@@ -18,6 +18,24 @@
  #
  CFLAGS+= -include meta_features.h -DLIBKERN_KERNEL_PRIVATE -DOSALLOCDEBUG=1
  SFLAGS+= -include meta_features.h
@@ -84,6 +84,13 @@ diff --git a/libkern/conf/Makefile.template b/libkern/conf/Makefile.template
 +sweet_aes_ct_dec.o_INCFLAGS = $(SWEET_AES_INC)
 +sweet_aes_ct_cbcenc.o_INCFLAGS = $(SWEET_AES_INC)
 +sweet_aes_ct_cbcdec.o_INCFLAGS = $(SWEET_AES_INC)
++sweet_aes.o_CFLAGS_ADD += -mgeneral-regs-only
++sweet_aes_ct.o_CFLAGS_ADD += -mgeneral-regs-only
++sweet_aes_ct_enc.o_CFLAGS_ADD += -mgeneral-regs-only
++sweet_aes_ct_dec.o_CFLAGS_ADD += -mgeneral-regs-only
++sweet_aes_ct_cbcenc.o_CFLAGS_ADD += -mgeneral-regs-only
++sweet_aes_ct_cbcdec.o_CFLAGS_ADD += -mgeneral-regs-only
++corecrypto_aes.o_CFLAGS_ADD += -mgeneral-regs-only
 +endif
  
  # Runtime support functions don't interact well with LTO (9294679)
