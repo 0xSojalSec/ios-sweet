@@ -19,6 +19,8 @@ GICD, GICD_SIZE = 0x17a00000, 0x10000
 GICR, GICR_SIZE = 0x17a60000, 0x100000
 FB, FB_SIZE = 0x9c000000, 0x1700000
 FB_W, FB_H, FB_STRIDE = 1080, 2400, 1080 * 4
+# Internal UFS host (ufshc@1d84000 "ufs_mem"); QEMU virt has none
+UFS, UFS_SIZE = 0x01d84000, 0x3000
 TIMEBASE = 19200000
 VTIMER_INTID = 19
 # QEMU virt (-M virt,gic-version=3 -cpu cortex-a76): GICD/GICR and the generic timer's CNTFRQ
@@ -94,6 +96,13 @@ def build(seed=None, qemu=False):
         ('stride', u32(FB_STRIDE)),
     ])
 
+    # bsd/dev/sweet_ufs.c: the UFS host ABL leaves running (absolute physical reg).
+    ufs = node('sweet-ufs', [
+        ph(),
+        ('compatible', cstr('qcom,ufshc')),
+        ('reg', u64(UFS, UFS_SIZE)),
+    ])
+
     # pmap_compute_max_asids requires the node even when no overrides are set.
     # An absent pmap-max-asids property selects XNU's own MAX_ASIDS default.
     defaults = node('defaults', [ph()])
@@ -105,7 +114,7 @@ def build(seed=None, qemu=False):
         ('target-type', cstr('sweet')),
         ('#address-cells', u32(2)),
         ('#size-cells', u32(2)),
-    ], [chosen, defaults, cpus, arm_io, fbcon])
+    ], [chosen, defaults, cpus, arm_io, fbcon] + ([] if qemu else [ufs]))
 
 
 if __name__ == '__main__':
