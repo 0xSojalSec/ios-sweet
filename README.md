@@ -14,7 +14,8 @@ The goal is iOS 16 on a non-Apple Android phone. Right now the work is kernel br
 | Plain arm64 (no PAC) SWEET XNU config builds in CI | done |
 | XNU reaches `arm_init`, `arm_vm_init`, `pmap_bootstrap` | done |
 | Framebuffer kprintf console, VM/zones, scheduler, IPC, KDP up | done |
-| Allocator RNG without corecrypto (patch 0013) | built, awaiting hardware result |
+| Allocator RNG without corecrypto (patch 0013) | verified in QEMU and on hardware |
+| Registered kernel PRNG (patch 0014) | building in CI |
 | IOKit platform (GIC, PMGR, platform expert), userland | not started |
 
 The live, detailed log is in [`NOTES.md`](NOTES.md). Its "Agent handoff" section always holds the current blocker, latest CI run, image hashes and the next step.
@@ -64,6 +65,7 @@ Not in git (see `.gitignore`): `backup/` partition dumps, `dtb/` live device tre
 | 0011 | Physmap block-alignment padding fix |
 | 0012 | Keep the debug console alive after TTBR0 teardown |
 | 0013 | Per-CPU allocator RNG without corecrypto |
+| 0014 | Built-in HMAC-SHA256 kernel PRNG and entropy hashing |
 
 ## Build and boot
 
@@ -90,6 +92,27 @@ fastboot boot shim/out/shim-boot.img
 ```
 
 Never `fastboot flash` anything for bring-up. Android (PixelOS) stays installed and untouched.
+
+## Quick QEMU iteration
+
+Use the same kernel with a QEMU ADT (virt GIC addresses and timer frequency):
+
+```sh
+tools/mkadt.py research/qemu.adt --qemu
+tools/mkpayload.py xnu/out/kernel.development.sweet research/qemu.adt research/qemu.bin \
+    --cmdline 'debug=0xc serial=3 cpus=1 keepsyms=1 -enable_kprintf_spam'
+tools/qemu-sweet.py research/qemu.bin research/qemu-run --secs 10 \
+    --kernel xnu/out/kernel.development.sweet --fail-on-panic
+cat research/qemu-run/result.json research/qemu-run/fb.txt
+```
+
+Requires `qemu-system-aarch64` and `llvm-nm`. The optional `--kernel` must match
+the payload: its font decodes the framebuffer exactly, without OCR. A visible
+panic returns exit code 2 with `--fail-on-panic`. `fb.txt` contains screen rows
+in screen order; the console wraps, so this is not a full chronological log.
+`no_panic_observed` only describes the snapshot; check `regs.txt` and the screen
+for stalls. QEMU virt covers generic ARM kernel execution; Qualcomm hardware,
+the bootloader, panel and PSCI conduit still require phone validation.
 
 ## Key hardware facts
 

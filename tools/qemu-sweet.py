@@ -13,6 +13,11 @@ After N seconds (or when the guest stops) it writes into OUTDIR:
   fb.png     the 1080x2400 framebuffer (what the phone screen would show)
   regs.txt   QEMU's view of CPU state
   qemu.log   exceptions with ESR/FAR/ELR (-d int,guest_errors)
+
+With --kernel KERNEL (the matching unstripped Mach-O), also decode the
+framebuffer using its iso_font into fb.txt and write result.json. This is a
+snapshot of the circular screen, not a complete boot log. --fail-on-panic
+returns 2 when a panic is visible; absence of a panic does not prove boot.
 """
 import argparse, json, os, socket, struct, subprocess, sys, time, zlib
 
@@ -66,6 +71,38 @@ def write_png(path, raw):
     open(path, 'wb').write(png)
 
 
+def payload_data(payload, va, size):
+    """Read initialized segment bytes by VA (the payload has no slide)."""
+    nsegs = struct.unpack_from('<I', payload, 12)[0]
+    for i in range(nsegs):
+        vmaddr, _, foff, fsize = struct.unpack_from('<4Q', payload, 0x2a8 + 32 * i)
+        if vmaddr <= va and va + size <= vmaddr + fsize:
+            offset = foff + va - vmaddr
+            return payload[offset:offset + size]
+    raise ValueError(f'VA {va:#x}+{size:#x} not in initialized payload segments')
+
+
+def decode_screen(raw, font):
+    """Exact glyph matching for pe_serial.c's 2x, white-on-black fbcon."""
+    glyphs = {font[c * 16:(c + 1) * 16]: chr(c) for c in range(32, 127)}
+    rows, unknown = [], 0
+    for row in range(FB_H // 32):
+        chars = []
+        for col in range(FB_W // 16):
+            glyph = bytearray(16)
+            for y in range(16):
+                offset = (row * 32 + y * 2) * FB_STRIDE + col * 16 * 4
+                for x in range(8):
+                    if raw[offset + x * 8:offset + x * 8 + 4] == b'\xff' * 4:
+                        glyph[y] |= 1 << x
+            key = bytes(glyph)
+            char = glyphs.get(key, '?')
+            unknown += key not in glyphs
+            chars.append(char)
+        rows.append(''.join(chars).rstrip())
+    return '\n'.join(rows).rstrip() + '\n', unknown
+
+
 def qmp(sock_path, *cmds, pmemsave=None):
     """Run QEMU human-monitor commands over QMP (synchronous, unlike the echoing HMP socket)."""
     s = socket.socket(socket.AF_UNIX)
@@ -103,11 +140,24 @@ def main():
     ap.add_argument('--gdb', action='store_true', help='start halted, gdb stub on :1234, no timeout')
     ap.add_argument('--hmp', action='append', default=[], help='extra monitor command run after stop (repeatable), e.g. "x /8gx 0xfffffe..."')
     ap.add_argument('--cpu', default='cortex-a76')	# ARMv8.2 like Kryo 470, same ID_AA64MMFR0
+    ap.add_argument('--kernel', help='matching unstripped kernel, for exact framebuffer text decoding (uses llvm-nm)')
+    ap.add_argument('--fail-on-panic', action='store_true', help='exit 2 for a visible panic; requires --kernel')
     a = ap.parse_args()
+    if a.fail_on_panic and not a.kernel:
+        ap.error('--fail-on-panic requires --kernel')
+    payload = open(a.payload, 'rb').read()
+    font = None
+    if a.kernel:
+        symbols = subprocess.check_output(['llvm-nm', '--defined-only', a.kernel], text=True)
+        fonts = [int(line.split()[0], 16) for line in symbols.splitlines()
+                 if line.split()[-1:] == ['_iso_font']]
+        if len(fonts) != 1:
+            ap.error('kernel must contain exactly one _iso_font symbol')
+        font = payload_data(payload, fonts[0], 256 * 16)
     os.makedirs(a.outdir, exist_ok=True)
     out = os.path.abspath(a.outdir)
 
-    phys_base, img, ba_pa, entry_pa = build_image(open(a.payload, 'rb').read())
+    phys_base, img, ba_pa, entry_pa = build_image(payload)
     open(f'{out}/ram.bin', 'wb').write(img)
     open(f'{out}/stub.bin', 'wb').write(stub(ba_pa, entry_pa))
     print(f'phys_base={phys_base:#x} boot_args={ba_pa:#x} entry={entry_pa:#x}', file=sys.stderr)
@@ -131,19 +181,34 @@ def main():
     t0 = time.time()
     while p.poll() is None and time.time() - t0 < a.secs:
         time.sleep(0.2)
+    result = {'status': 'qemu_exited', 'qemu_returncode': p.returncode}
     if p.poll() is None:
         _, regs, *extra = qmp(mon, 'stop', 'info registers', *a.hmp, pmemsave=(FB_BASE, FB_STRIDE * FB_H, f'{out}/fb.raw'))
         open(f'{out}/regs.txt', 'w').write(regs + ''.join(f'\n(qemu) {c}\n{r}' for c, r in zip(a.hmp, extra)))
         p.kill()
         p.wait()
-        write_png(f'{out}/fb.png', open(f'{out}/fb.raw', 'rb').read())
+        raw = open(f'{out}/fb.raw', 'rb').read()
+        write_png(f'{out}/fb.png', raw)
+        result = {'status': 'not_decoded'}
+        if font is not None:
+            screen, unknown = decode_screen(raw, font)
+            open(f'{out}/fb.txt', 'w').write(screen)
+            panic = 'panic(cpu ' in screen or 'SWEET EARLY PANIC:' in screen
+            result = {'status': 'panic' if panic else 'no_panic_observed' if screen.strip() else 'blank_screen',
+                      'unknown_glyphs': unknown, 'snapshot_only': True}
         os.unlink(f'{out}/fb.raw')
     else:
         print(f'qemu exited early: {p.returncode}', file=sys.stderr)
     for f in ('ram.bin',):
         os.unlink(f'{out}/{f}')
+    open(f'{out}/result.json', 'w').write(json.dumps(result, indent=2) + '\n')
+    print(json.dumps(result), file=sys.stderr)
     print(f'{out}/fb.png  {out}/regs.txt  {out}/qemu.log', file=sys.stderr)
+    if a.fail_on_panic and result['status'] == 'panic':
+        return 2
+    if result['status'] == 'qemu_exited':
+        return 1
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())
