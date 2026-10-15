@@ -12,6 +12,8 @@ Edit the sources under BUILDTREE/xnu, re-run, and turn the result into
 patches with `git diff` there. Uses the local Apple-fork clang (swiftlang).
 
 Env: XNU_CC_EXTRA   extra flags (e.g. "-DKPERF -DKPC" for config changes)
+     XNU_CC_POST    flags appended after the original ones (like a per-object
+                    _CFLAGS_ADD in the xnu Makefiles: -U/-include after -D)
      XNU_CC_OBJDIR  emit real objects there instead of a syntax-only check
                     (then: llvm-nm for undefined symbols = link errors)
 """
@@ -107,6 +109,7 @@ def run(item, bt, cdirs):
             continue
         a = CI_SDK_PLATFORM.sub(os.path.join(bt, 'sdk-kernel-platform/platform'), a)
         new.append(a.replace(CI_DXB, bt))
+    new += os.environ.get('XNU_CC_POST', '').split()
     comp = next((c for c in COMPONENTS if f'/xnu/{c}/' in src), None) or \
         next((c for c in COMPONENTS if f'/{c}/' in src), None)
     cwd = cdirs.get(comp)
