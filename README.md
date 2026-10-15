@@ -19,11 +19,12 @@ The goal is iOS 16 on a non-Apple Android phone. Right now the work is kernel br
 | Missing trust-cache providers (patch 0015) | handled; verified in QEMU |
 | SWEET device-tree platform expert (patch 0016) | verified in QEMU |
 | QEMU virtual timer IRQ (patch 0017) | IRQs verified |
-| CPU/device drivers and userland | next |
+| SWEET boot CPU driver (patch 0018) | verified in QEMU; BSD initialization entered |
+| Device drivers and userland | next |
 
-QEMU currently registers the SWEET platform expert and handles timer interrupts,
-then waits for CPU driver initialization in `ml_wait_max_cpus`. A 30-second run
-shows no panic; userland has not started.
+QEMU now registers the SWEET boot CPU, verifies GIC SGI delivery and enters BSD
+initialization. Userland has not started; the next BSD/device dependencies are
+being investigated.
 
 The live, detailed log is in [`NOTES.md`](NOTES.md). Its "Agent handoff" section always holds the current blocker, latest CI run, image hashes and the next step.
 
@@ -76,6 +77,7 @@ Not in git (see `.gitignore`): `backup/` partition dumps, `dtb/` live device tre
 | 0015 | Explicitly unavailable trust-cache service without Image4/AMFI |
 | 0016 | Built-in SWEET device-tree platform expert |
 | 0017 | Select virtual timer PPI from the device tree (phone 19, QEMU 27) |
+| 0018 | Single boot CPU driver with processor registration and SGI validation |
 
 ## Build and boot
 
