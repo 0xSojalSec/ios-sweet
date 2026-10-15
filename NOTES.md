@@ -1,17 +1,18 @@
 # iOS 16 on sweet (Redmi Note 10 Pro, SM7150) - working notes
 
-## Agent handoff / active work (2026-10-14)
+## Agent handoff / active work (2026-10-15)
 - User wants persistent progress toward iOS 16, commits for completed changes, builds through `gh` / GitHub Actions.
 - Keep this file current at every milestone so another agent can resume immediately, including when usage limits interrupt a session.
-- Current task: patch `0010` is implemented and committed as `0f35556`; CI `38638702083` PASSED. The new image WAS TEMPORARILY BOOTED successfully through fastboot on 2026-10-14 about 21:20 UTC. Waiting for the user's physical screen observation; do not repeat the boot or assume a marker was reached without their report.
-- Starting repo commit: `67576e7`, clean `main`. Latest successful kernel CI: `38635343732`.
+- Current task: user slept through the previous boot and explicitly requested another on 2026-10-15. Reboot attempt about 04:42 UTC could not reach fastboot because ADB was unresponsive. Waiting for the user to enter FASTBOOT manually (power + volume down), then run `timeout 45s fastboot boot shim/out/shim-boot-0010.img` and obtain the screen observation.
+- Kernel implementation commit: `0f35556`. Latest successful kernel CI: `38638702083` (patch 0010).
 - Local source sandbox: `research/bt13/xnu` (git baseline `623b060`, patches 0001-0008 already in baseline; uncommitted export edits correspond to patch 0009). Preserve those edits when producing patch 0010.
 - Previous compile log/tree: `research/run13.log`, `research/bt13`; previous kernel: `xnu/out/kernel.development.sweet`. New successful log/tree: `research/run14.log`, `research/bt14`; new kernel: `xnu/out-0010/kernel.development.sweet`.
-- Phone is currently reachable through adb. Never flash partitions for bring-up; use `fastboot boot` with the shim image.
+- Current device access: ADB initially listed `device`, but shell/reboot requests hung. Restarted the host ADB server and tried `adb reconnect offline`; transport became offline and then disappeared from `adb devices`. USB still exposes an ADB interface, and `fastboot devices` is empty. User was asked to enter FASTBOOT manually. Never flash partitions for bring-up; use `fastboot boot` with the shim image.
 - Patch `0010` lives in `xnu/patches/0010-sweet-early-framebuffer-debug.patch`. Its exact compiled sources are under `research/bt13/xnu`; generated objects are in `research/early-objs`.
 - Local checks passed: all 5 changed/new translation units compiled to arm64 Mach-O objects; new console only imports `_doprnt` and `iso_font` (both exist in the previous kernel). All 10 patches applied to a temporary upstream git index in CI order, and all 7 resulting changed source files matched the local compile inputs.
 - Reproduce changed-file compilation: `XNU_CC_OBJDIR="$PWD/research/early-objs" python3 tools/xnu-cc.py research/run13.log research/bt13 arm_init.c arm_vm_init.c kern/debug.c arm64/start.s osfmk/arm64/sweet_early.c --per-file` (create the output directory first). The helper now accepts explicit new source paths absent from the old artifact's Makefiles and rejects empty selections.
 - Device command result: `adb reboot bootloader`, then `timeout 30s fastboot boot shim/out/shim-boot-0010.img`: send OKAY (16028 KB), boot OKAY, total 0.541s. This confirms bootloader acceptance only, not XNU progress.
+- The successful boot above was on 2026-10-14. On 2026-10-15, `timeout 45s fastboot boot ...` timed out waiting for a device; no image was sent. Boot image SHA256 rechecked and unchanged. No new build is needed to repeat the trial.
 - User was asked for the last `SWEET EARLY` line, any panic text, or (if only red SHIM remains) whether the white bottom-left tile exists. This observation is the next required input. No Android/adb connection is expected while XNU is running.
 - CI: https://github.com/dipa-studio/ios-sweet/actions/runs/38638702083 (success; artifacts and full log downloaded).
 - New image: `shim/out/shim-boot-0010.img` (16,412,672 bytes, SHA256 `ed2c270e0081bad5ff517be415f9bfe8805463aea7866732203fa97ac737e64e`). Previous image preserved as `shim/out/shim-boot-pre0010.img`.
