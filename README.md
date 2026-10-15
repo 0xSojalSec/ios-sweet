@@ -15,7 +15,7 @@ The goal is iOS 16 on a non-Apple Android phone. Right now the work is kernel br
 | XNU reaches `arm_init`, `arm_vm_init`, `pmap_bootstrap` | done |
 | Framebuffer kprintf console, VM/zones, scheduler, IPC, KDP up | done |
 | Allocator RNG without corecrypto (patch 0013) | verified in QEMU and on hardware |
-| Registered kernel PRNG (patch 0014) | building in CI |
+| Registered kernel PRNG (patch 0014) | verified in QEMU |
 | IOKit platform (GIC, PMGR, platform expert), userland | not started |
 
 The live, detailed log is in [`NOTES.md`](NOTES.md). Its "Agent handoff" section always holds the current blocker, latest CI run, image hashes and the next step.
