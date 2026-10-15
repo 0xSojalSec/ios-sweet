@@ -18,6 +18,7 @@ With --kernel KERNEL (the matching unstripped Mach-O), also decode the
 framebuffer using its iso_font into fb.txt and write result.json. This is a
 snapshot of the circular screen, not a complete boot log. --fail-on-panic
 returns 2 when a panic is visible; absence of a panic does not prove boot.
+An undecodable or blank screen returns 3 with --fail-on-panic.
 """
 import argparse, json, os, socket, struct, subprocess, sys, time, zlib
 
@@ -103,6 +104,18 @@ def decode_screen(raw, font):
     return '\n'.join(rows).rstrip() + '\n', unknown
 
 
+def screen_result(screen, unknown):
+    if 'panic(cpu ' in screen or 'SWEET EARLY PANIC:' in screen:
+        status = 'panic'
+    elif unknown:
+        status = 'incomplete_decode'
+    elif screen.strip():
+        status = 'no_panic_observed'
+    else:
+        status = 'blank_screen'
+    return {'status': status, 'unknown_glyphs': unknown, 'snapshot_only': True}
+
+
 def qmp(sock_path, *cmds, pmemsave=None):
     """Run QEMU human-monitor commands over QMP (synchronous, unlike the echoing HMP socket)."""
     s = socket.socket(socket.AF_UNIX)
@@ -141,7 +154,7 @@ def main():
     ap.add_argument('--hmp', action='append', default=[], help='extra monitor command run after stop (repeatable), e.g. "x /8gx 0xfffffe..."')
     ap.add_argument('--cpu', default='cortex-a76')	# ARMv8.2 like Kryo 470, same ID_AA64MMFR0
     ap.add_argument('--kernel', help='matching unstripped kernel, for exact framebuffer text decoding (uses llvm-nm)')
-    ap.add_argument('--fail-on-panic', action='store_true', help='exit 2 for a visible panic; requires --kernel')
+    ap.add_argument('--fail-on-panic', action='store_true', help='exit 2 for a visible panic, 3 for incomplete/blank decoding; requires --kernel')
     a = ap.parse_args()
     if a.fail_on_panic and not a.kernel:
         ap.error('--fail-on-panic requires --kernel')
@@ -193,9 +206,7 @@ def main():
         if font is not None:
             screen, unknown = decode_screen(raw, font)
             open(f'{out}/fb.txt', 'w').write(screen)
-            panic = 'panic(cpu ' in screen or 'SWEET EARLY PANIC:' in screen
-            result = {'status': 'panic' if panic else 'no_panic_observed' if screen.strip() else 'blank_screen',
-                      'unknown_glyphs': unknown, 'snapshot_only': True}
+            result = screen_result(screen, unknown)
         os.unlink(f'{out}/fb.raw')
     else:
         print(f'qemu exited early: {p.returncode}', file=sys.stderr)
@@ -206,6 +217,8 @@ def main():
     print(f'{out}/fb.png  {out}/regs.txt  {out}/qemu.log', file=sys.stderr)
     if a.fail_on_panic and result['status'] == 'panic':
         return 2
+    if a.fail_on_panic and result['status'] in ('incomplete_decode', 'blank_screen'):
+        return 3
     if result['status'] == 'qemu_exited':
         return 1
 
