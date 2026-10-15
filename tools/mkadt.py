@@ -87,6 +87,10 @@ def build(seed=None):
         ('stride', u32(FB_STRIDE)),
     ])
 
+    # pmap_compute_max_asids requires the node even when no overrides are set.
+    # An absent pmap-max-asids property selects XNU's own MAX_ASIDS default.
+    defaults = node('defaults', [ph()])
+
     return node('device-tree', [
         ph(),
         ('compatible', cstr('xiaomi,sweet') + cstr('qcom,sm7150') + cstr('AppleARM')),
@@ -94,7 +98,7 @@ def build(seed=None):
         ('target-type', cstr('sweet')),
         ('#address-cells', u32(2)),
         ('#size-cells', u32(2)),
-    ], [chosen, cpus, arm_io, fbcon])
+    ], [chosen, defaults, cpus, arm_io, fbcon])
 
 
 if __name__ == '__main__':
