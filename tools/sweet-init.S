@@ -20,6 +20,16 @@
 	.globl	_start
 	.p2align 2
 _start:
+	/*
+	 * The kernel enters a static binary with sp at argc, aligned only to
+	 * what the argument/apple strings happened to need. Using a misaligned
+	 * sp as a base register raises an SP alignment fault (SIGBUS) on real
+	 * hardware (QEMU does not check), so align it like crt0/dyld do.
+	 */
+	mov	x9, sp
+	and	x9, x9, #~15
+	mov	sp, x9
+
 	adr	x0, path
 	mov	x1, #O_RDWR
 	mov	x2, #0
