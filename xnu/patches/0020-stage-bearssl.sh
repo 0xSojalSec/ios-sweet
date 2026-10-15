@@ -34,6 +34,10 @@ header.write_text(text.replace('#include <limits.h>',
 for name in ('aes_ct', 'aes_ct_enc', 'aes_ct_dec', 'aes_ct_cbcenc', 'aes_ct_cbcdec'):
     shutil.copy2(source / 'src/symcipher' / (name + '.c'),
                  target / 'src/symcipher' / (name + '.c'))
+# MD5 for the legacy MD5Init/Update/Final API, with its little-endian codecs.
+for name in ('hash/md5.c', 'codec/dec32le.c', 'codec/enc32le.c'):
+    (target / 'src' / name).parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source / 'src' / name, target / 'src' / name)
 shutil.copy2(source / 'LICENSE.txt', target / 'LICENSE.txt')
 PY
-echo "Staged BearSSL portable AES ($bearssl_sha) for SWEET"
+echo "Staged BearSSL portable AES and MD5 ($bearssl_sha) for SWEET"
