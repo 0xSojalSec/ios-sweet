@@ -3,8 +3,11 @@
 ## Agent handoff / active work (2026-10-15)
 - User wants persistent progress toward iOS 16, commits for completed changes, builds through `gh` / GitHub Actions.
 - Keep this file current at every milestone so another agent can resume immediately, including when usage limits interrupt a session.
-- Current task: user photo confirms patch 0011 reaches stage 8, so the physmap assertion is FIXED ON HARDWARE. Subsequent progress was invisible because early console disabled itself. Patch 0012 is committed/pushed as `dcb7a55`; CI `38685166488` is running: https://github.com/dipa-studio/ios-sweet/actions/runs/38685166488. Await CI, package/boot image 0012 with `-enable_kprintf_spam`, and obtain its last stage/panic. User asked to enter FASTBOOT while CI runs.
-- Latest kernel implementation commit: `add3e5e`. Latest successful kernel CI: `38683683303` (patch 0011), https://github.com/dipa-studio/ios-sweet/actions/runs/38683683303.
+- Current task: patch 0012 (`dcb7a55`) CI `38685166488` PASSED (4m5s) and was temporarily booted on 2026-10-15 at 05:13 UTC. Fastboot send OKAY (16028 KB, 0.395s), boot OKAY (0.134s), total 0.534s. Await the user's last new marker/panic; do not reboot again before their observation. Last confirmed hardware milestone remains patch-0011 stage 8 (physmap assertion fixed).
+- Latest kernel implementation commit: `dcb7a55`. Latest successful kernel CI: `38685166488` (patch 0012), https://github.com/dipa-studio/ios-sweet/actions/runs/38685166488.
+- Patch-0012 current image: `shim/out/shim-boot-0012.img`, 16,412,672 bytes, SHA256 `cf4b8ec4a65a51888d71c17d09cd0831d6b761b90e2531fdb8e575c32f4fd24a`. Kernel `xnu/out-0012/kernel.development.sweet`, SHA256 `69b78f49f6459cc63a0af44e7cf73c1779ef72130ef72b12ae86c88183ffc742`; checksums passed and sweet_early_relocate symbol present. Entry PA remains `0xb146b488`, kernel end PA `0xb1ff4000`.
+- Patch-0012 log/tree: `research/run16.log`, `research/bt16` (extracted, no nested .git; preferred baseline for next patch). CI log confirms 0012 applied. Payload `shim/out/payload-0012.bin`, ADT `shim/out/sweet-0012.adt`; packed ramdisk byte-compared with payload in `shim/out/check-0012`.
+- Active payload command line: `debug=0xc serial=3 cpus=1 keepsyms=1 -enable_kprintf_spam`.
 - Patch-0011 artifacts: kernel `xnu/out-0011/kernel.development.sweet`, log `research/run15.log`, extracted buildtree `research/bt15` (no nested .git). CI log confirms patch 0011 applied; artifact checksums passed. Kernel is plain arm64, entry VA `0xfffffe000746b488` -> PA `0xb146b488`, kernel end PA still `0xb1ff4000`.
 - Patch-0011 image: 16,412,672 bytes, SHA256 `29ad5cbfc752473de4af2c471a24a8b34f92da4bff5afec65c614b90cd3ad53a`. Kernel SHA256 `8ac3a956894b09f7bd0d890de8c5de38c65513287feb1e1bcd12db8ca772ee5c`. Payload/ADT in `shim/out/payload-0011.bin`, `shim/out/sweet-0011.adt`. Header unpacked/checked in `shim/out/check-0011`.
 - First patch-0011 attempt timed out waiting for FASTBOOT; superseded by the successful send/boot recorded above. Do not repeat the boot before the user reports the current screen.
@@ -21,7 +24,7 @@
 - Normal serial initialization clears the screen, so earlier stages may disappear before 19. If serial exists, early console disables after 20; otherwise early panic output stays enabled.
 - Local source sandbox: `research/bt13/xnu` (git baseline `623b060`, patches 0001-0008 already in baseline; uncommitted export edits correspond to patch 0009). Preserve those edits when producing patch 0010.
 - Previous compile log/tree: `research/run13.log`, `research/bt13`; previous kernel: `xnu/out/kernel.development.sweet`. New successful log/tree: `research/run14.log`, `research/bt14`; new kernel: `xnu/out-0010/kernel.development.sweet`.
-- Current device access: patch-0011 image was temporarily started from FASTBOOT; no adb connection is expected. Never flash partitions for bring-up; use `fastboot boot` with the shim image.
+- Current device access: patch-0012 image was temporarily started from FASTBOOT; no adb connection is expected. Never flash partitions for bring-up; use `fastboot boot` with the shim image.
 - Patch `0010` lives in `xnu/patches/0010-sweet-early-framebuffer-debug.patch`. Its exact compiled sources are under `research/bt13/xnu`; generated objects are in `research/early-objs`.
 - Local checks passed: all 5 changed/new translation units compiled to arm64 Mach-O objects; new console only imports `_doprnt` and `iso_font` (both exist in the previous kernel). All 10 patches applied to a temporary upstream git index in CI order, and all 7 resulting changed source files matched the local compile inputs.
 - Reproduce changed-file compilation: `XNU_CC_OBJDIR="$PWD/research/early-objs" python3 tools/xnu-cc.py research/run13.log research/bt13 arm_init.c arm_vm_init.c kern/debug.c arm64/start.s osfmk/arm64/sweet_early.c --per-file` (create the output directory first). The helper now accepts explicit new source paths absent from the old artifact's Makefiles and rejects empty selections.
@@ -41,7 +44,7 @@
 - Bottom-left white 64x32 tile: assembly entered `start_first_cpu`, before page tables/MMU.
 - Text `SWEET EARLY 1`: entered `arm_init` with MMU on; 2: platform expert done; 3: CPU topology done; 4: CPU bootstrap done; 5: startup bootstrap done; 6: CPU init done; 7: entering `arm_vm_init`; 8: leaving bootstrap TTBR0.
 - `SWEET EARLY PANIC:` prints a copy of panic arguments before normal panic handling needs per-CPU/thread state.
-- Console is disabled immediately before bootstrap TTBR0 is invalidated. Normal fbcon from patch 0003 should then take over in `serial_init`.
+- In patches 0010/0011 the console disabled before TTBR0 invalidation; patch 0012 replaces that with a persistent kernel VA alias and diagnostics through normal serial/kprintf startup (see its legend above).
 - Screen contents require a physical observation from the user: adb cannot capture a framebuffer after Android has been replaced by a bare-metal kernel.
 
 ## Layout
