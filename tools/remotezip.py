@@ -3,6 +3,10 @@
 
   remotezip.py URL                      list members
   remotezip.py URL PATTERN OUTDIR       extract members whose name contains PATTERN
+
+Members are streamed to disk in chunks (multi-GB DMGs never sit in RAM), a
+partial download resumes from where it stopped, and the zip CRC-32 is
+checked before the file gets its final name.
 """
 import os, struct, subprocess, sys, zlib
 
@@ -41,7 +45,7 @@ def central_dir(url):
     i, out = 0, []
     while i < len(cd) and cd[i:i + 4] == b'PK\x01\x02':
         method, = struct.unpack_from('<H', cd, i + 10)
-        csize, usize = struct.unpack_from('<II', cd, i + 20)
+        crc, csize, usize = struct.unpack_from('<III', cd, i + 16)
         nlen, xlen, clen = struct.unpack_from('<HHH', cd, i + 28)
         lho, = struct.unpack_from('<I', cd, i + 42)
         name = cd[i + 46:i + 46 + nlen].decode()
@@ -55,24 +59,48 @@ def central_dir(url):
                 if csize == 0xffffffff: csize = vals.pop(0)
                 if lho == 0xffffffff: lho = vals.pop(0)
             j += 4 + hlen
-        out.append((name, method, csize, usize, lho))
+        out.append((name, method, csize, usize, lho, crc))
         i += 46 + nlen + xlen + clen
     return out
 
 
+CHUNK = 64 << 20
+
+
 def extract(url, entry, outdir):
-    name, method, csize, usize, lho = entry
+    name, method, csize, usize, lho, crc = entry
+    path = os.path.join(outdir, name)
+    if name.endswith('/'):
+        os.makedirs(path, exist_ok=True)
+        return
+    os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+    if os.path.exists(path) and os.path.getsize(path) == usize:
+        print(f'{name}: already complete')
+        return
     hdr = get(url, lho, lho + 29)
     nlen, xlen = struct.unpack_from('<HH', hdr, 26)
     start = lho + 30 + nlen + xlen
-    data = get(url, start, start + csize - 1)
-    if method == 8:
-        data = zlib.decompress(data, -15)
-    assert len(data) == usize, (name, len(data), usize)
-    path = os.path.join(outdir, name)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    open(path, 'wb').write(data)
-    print(f'{name}: {usize} bytes')
+    part = path + '.part'
+    # Compressed members restart (no resumable inflate state); stored ones resume.
+    done = os.path.getsize(part) if method == 0 and os.path.exists(part) else 0
+    inflate = zlib.decompressobj(-15) if method == 8 else None
+    with open(part, 'ab' if done else 'wb') as out:
+        while done < csize:
+            n = min(CHUNK, csize - done)
+            data = get(url, start + done, start + done + n - 1)
+            out.write(inflate.decompress(data) if inflate else data)
+            done += n
+            print(f'{name}: {done * 100 // csize}% ({done >> 20} MiB)', flush=True)
+        if inflate:
+            out.write(inflate.flush())
+    with open(part, 'rb') as f:
+        got = 0
+        while chunk := f.read(CHUNK):
+            got = zlib.crc32(chunk, got)
+    assert os.path.getsize(part) == usize, (name, os.path.getsize(part), usize)
+    assert got == crc, f'{name}: CRC-32 {got:08x} != {crc:08x}'
+    os.replace(part, path)
+    print(f'{name}: {usize} bytes, CRC-32 ok')
 
 
 if __name__ == '__main__':
