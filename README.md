@@ -16,7 +16,8 @@ The goal is iOS 16 on a non-Apple Android phone. Right now the work is kernel br
 | Framebuffer kprintf console, VM/zones, scheduler, IPC, KDP up | done |
 | Allocator RNG without corecrypto (patch 0013) | verified in QEMU and on hardware |
 | Registered kernel PRNG (patch 0014) | verified in QEMU |
-| IOKit platform (GIC, PMGR, platform expert), userland | not started |
+| Missing trust-cache providers (patch 0015) | handled; verified in QEMU |
+| IOKit platform (GIC, PMGR, platform expert), userland | next |
 
 The live, detailed log is in [`NOTES.md`](NOTES.md). Its "Agent handoff" section always holds the current blocker, latest CI run, image hashes and the next step.
 
@@ -66,6 +67,7 @@ Not in git (see `.gitignore`): `backup/` partition dumps, `dtb/` live device tre
 | 0012 | Keep the debug console alive after TTBR0 teardown |
 | 0013 | Per-CPU allocator RNG without corecrypto |
 | 0014 | Built-in HMAC-SHA256 kernel PRNG and entropy hashing |
+| 0015 | Explicitly unavailable trust-cache service without Image4/AMFI |
 
 ## Build and boot
 
