@@ -1,0 +1,72 @@
+#!/bin/bash
+# Build the SWEET iOS root: one case-sensitive HFS+ image holding an iOS OS
+# root filesystem plus its cryptexes, for the userdata partition (rd=ufsroot0).
+#
+#   mkiosroot.sh OS.dmg SYSTEMOS.dmg APPOS.dmg OUT.img [SIZE]     (SIZE default 16G)
+#
+# The IPSW images are raw APFS with LZBITMAP-compressed files: they are read
+# through apfs-fuse (decompressing), so the HFS+ copy is uncompressed. On a
+# device /private/preboot is its own volume holding the cryptexes, which
+# /System/Cryptexes/{OS,App} link to; here they live inside the one volume.
+# Owners, modes, symlinks and hard links are preserved (rsync -aH as root).
+set -euo pipefail
+
+[[ $# -ge 4 ]] || { sed -n '2,12p' "$0"; exit 2; }
+os=$(realpath "$1") sysos=$(realpath "$2") appos=$(realpath "$3") out=$4 size=${5:-16G}
+[[ ! -e $out ]] || { echo "refusing to overwrite $out" >&2; exit 1; }
+
+work=$(mktemp -d)
+mounts=()
+cleanup() {
+	local busy=0
+	for m in "${mounts[@]}"; do
+		if mountpoint -q "$m"; then
+			sudo umount "$m" 2>/dev/null || true
+		fi
+		mountpoint -q "$m" && busy=1
+	done
+	# Never recurse into a directory that is still mounted (the root is writable).
+	if [[ $busy == 0 ]]; then
+		rm -f "$work"/*.dmg
+		rmdir "$work"/* "$work" 2>/dev/null || true
+	else
+		echo "still mounted under $work: left in place" >&2
+	fi
+}
+trap cleanup EXIT
+
+# apfs-fuse splits its options on ',' (e.g. in iPhone10,3 paths): use links.
+# Keep the .dmg name: apfs-fuse only parses UDIF images (the OS one is UDIF,
+# the cryptexes are raw APFS) when the file name ends in .dmg.
+apfs_mount() {
+	ln -s "$1" "$work/$2.dmg"
+	mkdir "$work/$2"
+	# As root: a user's FUSE mount is unreadable to the root rsync below.
+	sudo "$(command -v apfs-fuse)" "$work/$2.dmg" "$work/$2"
+	mounts+=("$work/$2")
+}
+apfs_mount "$os" os
+apfs_mount "$sysos" sysos
+apfs_mount "$appos" appos
+
+truncate -s "$size" "$out"
+mkfs.hfsplus -s -v iOSRoot "$out"
+mkdir "$work/root"
+sudo mount -t hfsplus -o loop "$out" "$work/root"
+mounts=("$work/root" "${mounts[@]}")
+
+copy() {
+	echo "copying $1 -> ${2#"$work/root"}"
+	sudo mkdir -p "$2"
+	sudo rsync -aH --numeric-ids "$1/" "$2/"
+}
+copy "$work/os/root" "$work/root"
+copy "$work/sysos/root" "$work/root/private/preboot/Cryptexes/OS"
+copy "$work/appos/root" "$work/root/private/preboot/Cryptexes/App"
+
+df -h "$work/root"
+sudo umount "$work/root"
+# Linux hfsplus decomposes some non-ASCII names (localized Shortcuts examples)
+# differently from Apple's tables; let fsck_hfs rewrite them, then verify.
+fsck.hfsplus -f -y "$out" | grep -v 'Illegal name' || true
+fsck.hfsplus -f -n "$out"
