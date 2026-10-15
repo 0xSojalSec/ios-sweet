@@ -41,6 +41,7 @@ ABL (stock bootloader)
 | `.github/workflows/xnu.yml` | Kernel build on GitHub macOS runners via [blacktop/darwin-xnu-build](https://github.com/blacktop/darwin-xnu-build) |
 | `tools/mkadt.py` | Builds the minimal Apple Device Tree from sweet's real MMIO layout |
 | `tools/mkpayload.py` | Packs kernel + ADT + command line into the shim payload |
+| `tools/qemu-sweet.py` | Boot a payload in QEMU virt (use an ADT from `mkadt.py --qemu`), dumps the screen to PNG |
 | `tools/xnu-cc.py` | Local single-file cross-compile using a CI build log, to check patches before spending a CI run |
 | `tools/adt.py`, `remotezip.py` | Read Apple device trees, pull single files out of IPSWs |
 | `tools/unpack_bootv2.py` | Unpack Android boot.img v2 |
