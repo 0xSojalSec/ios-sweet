@@ -163,7 +163,7 @@ static const char *fs_type(uint32_t lba)
 	return "other";
 }
 
-/* One line per GPT entry: name, first LBA, size in MiB (4K blocks). */
+/* One line per GPT entry of at least 64 MiB: name, first LBA, size in MiB (4K blocks). */
 static void list_partitions(uint32_t entry_lba, uint32_t nent)
 {
 	static uint8_t ents[128 * 128] __attribute__((aligned(4096)));
@@ -183,6 +183,8 @@ static void list_partitions(uint32_t entry_lba, uint32_t nent)
 			name[c] = (ch >= 32 && ch < 127) ? ch : (ch ? '?' : 0);
 		}
 		name[16] = 0;
+		if (((last - first + 1) >> 8) < 64)	/* keep the screen to the big ones */
+			continue;
 		con_hex2(name, "lba=", (uint32_t)first, "MiB=", (uint32_t)((last - first + 1) >> 8));
 		if (!__builtin_strcmp(name, "userdata") || !__builtin_strcmp(name, "cust") ||
 		    !__builtin_strcmp(name, "cache"))
