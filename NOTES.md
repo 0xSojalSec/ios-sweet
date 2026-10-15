@@ -3,7 +3,7 @@
 ## Agent handoff / active work (2026-10-15)
 - User wants persistent progress toward iOS 16, commits for completed changes, builds through `gh` / GitHub Actions.
 - Keep this file current at every milestone so another agent can resume immediately, including when usage limits interrupt a session.
-- Current task: user observed stages 1-7 then the physmap assertion below. Patch `0011-sweet-physmap-alignment-padding.patch` now fixes non-PPL ARM_LARGE_MEMORY aperture padding. Local compile and arithmetic reproduction passed; commit/push for CI, then package/reboot the 0011 image and obtain the next screen result.
+- Current task: user observed stages 1-7 then the physmap assertion below. Patch 0011 fixes non-PPL ARM_LARGE_MEMORY aperture padding; committed/pushed as `add3e5e`. CI `38683683303` is running (https://github.com/dipa-studio/ios-sweet/actions/runs/38683683303). Await CI, package/reboot the 0011 image, then obtain the next screen result. User was asked to enter FASTBOOT while CI runs; only reboot when the new image is ready.
 - Kernel implementation commit: `0f35556`. Latest successful kernel CI: `38638702083` (patch 0010).
 - Local source sandbox: `research/bt13/xnu` (git baseline `623b060`, patches 0001-0008 already in baseline; uncommitted export edits correspond to patch 0009). Preserve those edits when producing patch 0010.
 - Previous compile log/tree: `research/run13.log`, `research/bt13`; previous kernel: `xnu/out/kernel.development.sweet`. New successful log/tree: `research/run14.log`, `research/bt14`; new kernel: `xnu/out-0010/kernel.development.sweet`.
