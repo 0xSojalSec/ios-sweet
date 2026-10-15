@@ -10,6 +10,7 @@
 #include "console.h"
 #include "mmu.h"
 #include "loader.h"
+#include "ufs.h"
 
 #define IMEM_RESTART_REASON	0x146aa65cUL	/* qcom,msm-imem restart_reason@65c */
 #define RESTART_BOOTLOADER	0x77665500U
@@ -381,6 +382,15 @@ void shim_main(uint64_t dtb)
 	const char *why = loader_boot(dtb);
 	con_str("LOADER", why);
 	con_skip();
+
+	/* No payload: probe the internal UFS while the MMU is still off. */
+	stage = "ufs";
+	test_ufs();
+	con_skip();
+	/* Keep the probe results on screen (later tests clear it); reset after 3 min. */
+	con_str("UFS", "probe done, reset in ~3 min");
+	delay_ms(180000);
+	reset(20);
 
 	stage = "fill off";
 	uint64_t fill_off = ticks_fill(RED);
