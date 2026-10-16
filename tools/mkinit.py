@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Wrap tools/sweet-init.S into a static, ad-hoc signed arm64 Mach-O executable.
 
-  mkinit.py OBJECT OUT        (OBJECT: clang -target arm64-apple-ios16.0 -c sweet-init.S)
+  mkinit.py OBJECT OUT [ENTITLEMENTS.plist]   (OBJECT: clang -target arm64-apple-ios16.0 -c sweet-init.S)
 
 No available linker produces static iOS executables on Linux, and the program
 is a single position-independent __text section, so the executable is laid
@@ -65,34 +65,45 @@ def segment(name, vmaddr, vmsize, fileoff, filesize, prot, sections=()):
     return cmd + b''.join(sections)
 
 
-def code_signature(image, code_limit, text_size):
-    """SuperBlob holding one ad-hoc CodeDirectory (version 0x20400) over image[:code_limit]."""
+def code_signature(image, code_limit, text_size, entitlements=None):
+    """SuperBlob holding one ad-hoc CodeDirectory (version 0x20400) over image[:code_limit],
+    plus an XML entitlements blob (special slot 5) when entitlements (plist bytes) are given."""
     page = 1 << CS_PAGE_SHIFT
     hashes = b''.join(hashlib.sha256(image[o:min(o + page, code_limit)]).digest()
                       for o in range(0, code_limit, page))
     nslots = len(hashes) // 32
+    ent_blob = None
+    nspecial = 0
+    if entitlements is not None:
+        ent_blob = struct.pack('>II', 0xfade7171, 8 + len(entitlements)) + entitlements
+        nspecial = 5			# slots -5..-1; only -5 (entitlements) is non-zero
+        hashes = hashlib.sha256(ent_blob).digest() + bytes(32 * 4) + hashes
     hdr_len = 88				# fields through execSegFlags
     ident_off = hdr_len
-    hash_off = ident_off + len(IDENT)
-    cd_len = hash_off + len(hashes)
+    hash_off = ident_off + len(IDENT) + 32 * nspecial
+    cd_len = ident_off + len(IDENT) + len(hashes)
     cd = struct.pack('>9I4BI', 0xfade0c02, cd_len, 0x20400, 0x2,	# CS_ADHOC
-                     hash_off, ident_off, 0, nslots, code_limit,
+                     hash_off, ident_off, nspecial, nslots, code_limit,
                      32, 2, 0, CS_PAGE_SHIFT, 0)			# SHA-256, 4K pages
     cd += struct.pack('>III', 0, 0, 0)		# scatterOffset, teamOffset, spare3
     cd += struct.pack('>QQQQ', 0, 0, text_size, 1)	# codeLimit64, execSeg base/limit, MAIN_BINARY
     assert len(cd) == hdr_len
     cd += IDENT + hashes
-    sb_hdr = 12 + 8
-    return struct.pack('>3I', 0xfade0cc0, sb_hdr + len(cd), 1) + struct.pack('>II', 0, sb_hdr) + cd
+    if ent_blob is None:
+        sb_hdr = 12 + 8
+        return struct.pack('>3I', 0xfade0cc0, sb_hdr + len(cd), 1) + struct.pack('>II', 0, sb_hdr) + cd
+    sb_hdr = 12 + 8 * 2
+    return (struct.pack('>3I', 0xfade0cc0, sb_hdr + len(cd) + len(ent_blob), 2) +
+            struct.pack('>IIII', 0, sb_hdr, 5, sb_hdr + len(cd)) + cd + ent_blob)
 
 
-def build(obj):
+def build(obj, entitlements=None):
     code, start = text_of(obj)
     assert CODE_OFF + len(code) <= SEG, 'code does not fit in one __TEXT page'
     sect = struct.pack('<16s16sQQIIIIIIII', b'__text', b'__TEXT', BASE + CODE_OFF, len(code),
                        CODE_OFF, 3, 0, 0, S_ATTR_CODE, 0, 0, 0)
     # The signature length depends only on the (fixed) __TEXT size: compute it first.
-    sig_size = len(code_signature(bytes(SEG), SEG, SEG))
+    sig_size = len(code_signature(bytes(SEG), SEG, SEG, entitlements))
     thread = struct.pack('<IIII', LC_UNIXTHREAD, 16 + 4 * ARM_THREAD_STATE64_COUNT,
                          ARM_THREAD_STATE64, ARM_THREAD_STATE64_COUNT)
     state = [0] * 33				# x0..x28, fp, lr, sp, pc
@@ -112,12 +123,14 @@ def build(obj):
     image = bytearray(SEG)
     image[:32 + len(lc)] = header + lc
     image[CODE_OFF:CODE_OFF + len(code)] = code
-    sig = code_signature(bytes(image), SEG, SEG)
+    sig = code_signature(bytes(image), SEG, SEG, entitlements)
     assert len(sig) == sig_size
     return bytes(image) + sig
 
 
 if __name__ == '__main__':
-    out = build(open(sys.argv[1], 'rb').read())
+    # mkinit.py OBJ OUT [ENTITLEMENTS.plist]
+    ents = open(sys.argv[3], 'rb').read() if len(sys.argv) > 3 else None
+    out = build(open(sys.argv[1], 'rb').read(), ents)
     open(sys.argv[2], 'wb').write(out)
     print(f'{sys.argv[2]}: {len(out)} bytes')
