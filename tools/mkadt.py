@@ -4,7 +4,7 @@
 Only what the early boot path actually reads (see NOTES.md); every MMIO
 address comes from the sweet live FDT. Usage:  mkadt.py OUT.adt [--dump] [--qemu] [--highmem]
 """
-import os, struct, sys
+import hashlib, os, struct, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import adt  # noqa: E402
@@ -31,6 +31,8 @@ VTIMER_INTID = 19
 # QEMU virt (-M virt,gic-version=3 -cpu cortex-a76): GICD/GICR and the generic timer's CNTFRQ
 QEMU_GICD, QEMU_GICR, QEMU_TIMEBASE = 0x08000000, 0x080a0000, 62500000
 QEMU_VTIMER_INTID = 27
+
+BOOT_MANIFEST_HASH = hashlib.sha384(b'sweet boot manifest').digest()
 
 u32 = lambda *v: struct.pack('<%dI' % len(v), *v)
 u64 = lambda *v: struct.pack('<%dQ' % len(v), *v)
@@ -60,6 +62,10 @@ def build(seed=None, qemu=False, highmem=False):
         ('debug-enabled', u32(1)),
         ('firmware-version', cstr('sweet-shim')),
         ('system-firmware-version', cstr('sweet-shim')),
+        # iBoot's SHA-384 of the boot manifest; /sbin/mount -P 1 exits unless
+        # it exists (bind mounts /private/preboot/<hex>/usr/standalone/firmware,
+        # tolerating a missing directory). Fixed stand-in value.
+        ('boot-manifest-hash', BOOT_MANIFEST_HASH),
     ], [node('memory-map', [ph()]),
         # Local boot policy (kern_csr.c): SIP relaxed like `csrutil disable`
         # (lp-sip0: untrusted kexts, unrestricted FS, task_for_pid, kernel
