@@ -9,6 +9,13 @@
 # device /private/preboot is its own volume holding the cryptexes, which
 # /System/Cryptexes/{OS,App} link to; here they live inside the one volume.
 # Owners, modes, symlinks and hard links are preserved (rsync -aH as root).
+#
+# The volume is journaled (XNU replays the journal after a panic; Linux only
+# mounts it read-write with -o force and leaves the journal empty). SWEET
+# additions: /System/Library/Caches/com.apple.dyld hard-links the SystemOS
+# cryptex shared cache (ignition_level=1 looks there), and
+# /private/var/keybags/systembag.kb is the plain-plist system keybag that
+# keybagd reads with /defaults/no-effaceable-storage (tools/mkadt.py).
 set -euo pipefail
 
 [[ $# -ge 4 ]] || { sed -n '2,12p' "$0"; exit 2; }
@@ -50,9 +57,9 @@ apfs_mount "$sysos" sysos
 apfs_mount "$appos" appos
 
 truncate -s "$size" "$out"
-mkfs.hfsplus -s -v iOSRoot "$out"
+mkfs.hfsplus -s -J -v iOSRoot "$out"
 mkdir "$work/root"
-sudo mount -t hfsplus -o loop "$out" "$work/root"
+sudo mount -t hfsplus -o loop,force "$out" "$work/root"
 mounts=("$work/root" "${mounts[@]}")
 
 copy() {
@@ -63,6 +70,20 @@ copy() {
 copy "$work/os/root" "$work/root"
 copy "$work/sysos/root" "$work/root/private/preboot/Cryptexes/OS"
 copy "$work/appos/root" "$work/root/private/preboot/Cryptexes/App"
+
+# Shared cache where dyld looks at ignition level 1: hard links, no extra space.
+dsc=private/preboot/Cryptexes/OS/System/Library/Caches/com.apple.dyld
+sudo mkdir -p "$work/root/System/Library/Caches/com.apple.dyld"
+for f in "$work/root/$dsc"/*; do
+	sudo ln "$f" "$work/root/System/Library/Caches/com.apple.dyld/${f##*/}"
+done
+
+# System keybag for the built-in AppleKeyStore (no passcode).
+sudo install -d -m 0700 -o 0 -g 0 "$work/root/private/var/keybags"
+printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' \
+	'<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+	'<plist version="1.0"><dict><key>KeyBagKeys</key><data>U1dFRVQ=</data></dict></plist>' |
+	sudo install -m 0600 -o 0 -g 0 /dev/stdin "$work/root/private/var/keybags/systembag.kb"
 
 df -h "$work/root"
 sudo umount "$work/root"
