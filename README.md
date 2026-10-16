@@ -2,44 +2,64 @@
 
 Porting Apple's XNU kernel (the iOS 16 generation, xnu-8796) to the **Redmi Note 10 Pro** (`sweet`, Qualcomm SM7150 / Snapdragon 732G).
 
-The goal is iOS 16 on a non-Apple Android phone. Right now the work is kernel bring-up: getting an open-source XNU build to boot on Qualcomm hardware, one crash at a time.
+The goal is iOS 16 on a non-Apple phone. The port now boots real Apple iOS 16.7.16 (20H392) userspace from internal UFS storage: dyld loads the shared cache, launchd runs boot tasks, and Apple system daemons execute on the Snapdragon CPU.
+
+**There is no working iOS GUI yet.** SpringBoard and backboardd reach display initialization and fail because the port does not provide an IOMobileFramebuffer display service. This is experimental bring-up, with incomplete drivers and security substitutes.
 
 ## Status
 
-| Milestone | State |
+Status as of **2026-10-17**, based on the hardware observations and research in [`NOTES.md`](NOTES.md).
+
+| Area | Current state |
 | --- | --- |
-| Bare-metal shim boots via `fastboot boot`, draws to the panel | done |
-| GICv3 Group 1 interrupts, timers, SGIs, PSCI SMP verified | done |
-| 16K-granule MMU verified on the Kryo 470 | done |
-| Plain arm64 (no PAC) SWEET XNU config builds in CI | done |
-| XNU reaches `arm_init`, `arm_vm_init`, `pmap_bootstrap` | done |
-| Framebuffer kprintf console, VM/zones, scheduler, IPC, KDP up | done |
-| Allocator RNG without corecrypto (patch 0013) | verified in QEMU and on hardware |
-| Registered kernel PRNG (patch 0014) | verified in QEMU |
-| Missing trust-cache providers (patch 0015) | handled; verified in QEMU |
-| SWEET device-tree platform expert (patch 0016) | verified in QEMU |
-| QEMU virtual timer IRQ (patch 0017) | IRQs verified |
-| SWEET boot CPU driver (patch 0018) | verified in QEMU; BSD initialization entered |
-| Device drivers and userland | next |
+| Boot shim and framebuffer console | Working on hardware via temporary `fastboot boot` |
+| Plain arm64 XNU, 16K pages, interrupts and timers | Working on hardware |
+| CPU support | One XNU boot CPU; secondary CPU power-on verified separately in the shim, not XNU SMP |
+| Kernel-managed RAM | About 3.95 GiB in the upper DDR bank, verified on hardware |
+| Internal UFS storage | Root device reads and writes the existing `userdata` partition |
+| Root filesystem | Journaled, case-sensitive HFS+ image containing iPhone X iOS userspace and cryptex contents |
+| Apple dyld and launchd | Shared cache maps; boot tasks run and LaunchDaemons start on hardware |
+| Apple services | Many execute, including bluetoothd, powerd and runningboardd; this does not establish working radios or other hardware |
+| Recent daemon fixes | Recorded watchdogd, CommCenter, identityservicesd and logd crashes resolved in subsequent phone boots |
+| SpringBoard and backboardd | Execute, then fail at missing main-display initialization |
+| GUI, GPU acceleration and touchscreen | Not working; display and IOSurface support are the next work |
 
-QEMU now registers the SWEET boot CPU, verifies GIC SGI delivery and enters BSD
-initialization. Userland has not started; the next BSD/device dependencies are
-being investigated.
+### Current work: getting pixels from the iOS window server
 
-The live, detailed log is in [`NOTES.md`](NOTES.md). Its "Agent handoff" section always holds the current blocker, latest CI run, image hashes and the next step.
+The chosen approach is **CPU rendering plus a kernel IOMobileFramebuffer service**,
+with display output kept separate from a possible future Adreno driver. QuartzCore
+contains a software renderer, but its selection and operation on this port have
+not yet been verified. Display discovery has been traced to device-tree display
+nodes and matching IOMobileFramebuffer services. IOSurface buffer handling, swaps
+and display notifications still need implementation.
+
+The latest documented kernel is **0045** (CI run `38961814194`), used by
+`shim/out/shim-boot-0045n.img`. The latest recorded phone result uses root image
+**v7**. Image **v8** is prepared to send SpringBoard/backboardd logs to the console;
+its resulting phone output is not yet recorded. Other unresolved crashes include
+mediaserverd, lockdownd and locationd.
+
+AppleKeyStore and watchdog support are limited bring-up implementations. The port
+also relaxes root authentication and code-signing policies and uses an unsecured
+launchd cache. These do not provide Apple's normal security guarantees. Starting a
+service is distinct from providing its underlying hardware functionality.
+
+The active handoff at the top of [`NOTES.md`](NOTES.md) records exact boot results,
+artifacts, build IDs and the next action. Older entries preserve superseded states.
 
 ## How it boots
 
 ```
 ABL (stock bootloader)
-  -> fastboot boot shim-boot.img     (temporary, nothing is flashed)
+  -> fastboot boot shim-boot.img     (temporary kernel/shim image)
      -> shim: own MMU setup, reads the live FDT, loads the payload from the ramdisk
         -> XNU Mach-O + generated Apple Device Tree + boot_args
-           -> start_first_cpu -> arm_init -> ...
+           -> XNU -> UFS root device -> journaled HFS+ on userdata
+              -> Apple dyld + shared cache -> launchd -> boot tasks and daemons
 ```
 
 - **No serial.** The debug UART is wired as SPI on sweet, so the screen is the only debug channel. The shim and the XNU patches draw stage markers, kprintf output and panics straight into the framebuffer ABL leaves at `0x9c000000`. Progress is read from phone photos or QEMU framebuffer text snapshots.
-- The shim resets itself via PSCI when done, so the phone comes back to Android on its own.
+- **Storage is persistent.** The iOS root image replaces Android userdata; Android cannot boot normally with that data partition. Bootloaders, recovery, modem/persist partitions and backups are preserved. No GPT changes were needed.
 
 ## Layout
 
@@ -53,6 +73,10 @@ ABL (stock bootloader)
 | `tools/qemu-sweet.py` | Boot a payload in QEMU virt (use an ADT from `mkadt.py --qemu`), dumps the screen to PNG |
 | `tools/xnu-cc.py` | Local single-file cross-compile using a CI build log, to check patches before spending a CI run |
 | `tools/adt.py`, `remotezip.py` | Read Apple device trees, pull single files out of IPSWs |
+| `tools/mkiosroot.sh` | Repackages OS, SystemOS and AppOS images into a journaled HFS+ root |
+| `tools/patch-launchd-plist.py` | Enables console logging for selected launchd jobs and disables panic-on-crash keys |
+| `tools/sweet-crash.py` | Symbolicates console crash reports against the shared cache and root binaries |
+| `tools/sparsediff.py` | Builds sparse image differences; requires an exact unchanged baseline |
 | `tools/unpack_bootv2.py` | Unpack Android boot.img v2 |
 | `NOTES.md` | Hardware facts, design decisions, full bring-up history |
 | `AGENTS.md` | Rules for coding agents working on the repo |
@@ -78,6 +102,24 @@ Not in git (see `.gitignore`): `backup/` partition dumps, `dtb/` live device tre
 | 0016 | Built-in SWEET device-tree platform expert |
 | 0017 | Select virtual timer PPI from the device tree (phone 19, QEMU 27) |
 | 0018 | Single boot CPU driver with processor registration and SGI validation |
+| 0019 | Built-in Apple OSS libpthread kernel provider |
+| 0020 | Portable BearSSL AES support |
+| 0021-0024 | RAM-disk root, mockfs fixes and built-in SHA-256 |
+| 0025 | Initial built-in AMFI interface without entitlements |
+| 0026-0027 | Built-in Apple OSS HFS and BearSSL MD5 |
+| 0028-0031 | UFS root device, unsealed root and opt-in UFS/root writes |
+| 0032-0033 | BearSSL SHA-1 and SHA-384/512 |
+| 0034 | UFS DMA address checks for memory above 4 GiB |
+| 0035-0036 | XML entitlements and signed/platform-binary status for bring-up |
+| 0037 | Enable bindfs |
+| 0038 | Limited AppleKeyStore service |
+| 0039 | Disable core dumps by default |
+| 0040-0042 | Watchdog service and quieter HFS/exec console output |
+| 0043-0044 | Console crash reports, backtraces and exit-reason text |
+| 0045 | Watchdog PMU-primary compatibility |
+
+CI runs the numbered staging scripts to fetch the pinned libpthread, BearSSL and
+HFS sources before applying the patches.
 
 ## Build and boot
 
@@ -85,15 +127,20 @@ Kernel (CI):
 
 ```sh
 gh workflow run xnu.yml -R dipa-studio/ios-sweet
-gh run download -R dipa-studio/ios-sweet -n xnu-kernel -D xnu/out
+gh run download RUN_ID -R dipa-studio/ios-sweet -n xnu-kernel -D xnu/out
 ```
 
-Payload and boot image (needs `aarch64-linux-gnu-gcc` and `mkbootimg`):
+Replace `RUN_ID` with the successful build being used. The examples below run
+from the repository root. Building the shim needs `aarch64-linux-gnu-gcc`,
+`mkbootimg`, and the locally extracted stock DTB at `dtb/boot_unpacked/dtb`.
+
+Phone payload for an **already provisioned iOS root** on `userdata`:
 
 ```sh
-tools/mkadt.py shim/out/sweet.adt
+mkdir -p shim/out
+tools/mkadt.py shim/out/sweet.adt --highmem
 tools/mkpayload.py xnu/out/kernel.development.sweet shim/out/sweet.adt shim/out/payload.bin \
-    --cmdline 'debug=0xc serial=3 cpus=1 keepsyms=1 -enable_kprintf_spam -noprogress'
+    --cmdline 'debug=0xc serial=3 cpus=1 keepsyms=1 -enable_kprintf_spam -noprogress rd=ufsroot0 unentitled_ios_sim_launch=1 ignition_level=1 ufsrw=1 rootrw=1 launchd_unsecure_cache=1 wdt=-1'
 shim/build.sh out/payload.bin
 ```
 
@@ -103,17 +150,35 @@ Boot it (phone in fastboot):
 fastboot boot shim/out/shim-boot.img
 ```
 
-Never `fastboot flash` anything for bring-up. Android (PixelOS) stays installed and untouched.
+This temporarily loads the boot image, but `ufsrw=1 rootrw=1` permits persistent
+writes to the iOS root. Without an appropriate root image, this is not a complete
+installation procedure.
+
+`tools/mkiosroot.sh OS.dmg SYSTEMOS.dmg APPOS.dmg OUT.img [SIZE]` builds the base
+root image (default 16 GiB), using `apfs-fuse`, `rsync`, HFS+ tools and sudo. The
+latest diagnostic launchd plist changes are a separate step; see `NOTES.md`.
+Provisioning replaces Android userdata. Preserve partition backups and keep writes
+limited to the existing `userdata` partition. Large images must be converted to
+Android sparse format for this device's fastboot download limit. A sparse diff is
+valid only when its old image exactly matches the on-device contents; writable
+boots invalidate that assumption.
+
+Apple firmware, extracted userspace and root images are local artifacts and are
+not included in this repository.
 
 ## Quick QEMU iteration
 
-Use the same kernel with a QEMU ADT (virt GIC addresses, timer frequency and IRQ):
+For a minimal userspace check, use the same kernel with a QEMU ADT and a locally
+prepared HFS+ test root containing the static test init (the historical
+`research/root-hfs.img`). This does not boot the full iOS root or emulate UFS:
 
 ```sh
+mkdir -p research
 tools/mkadt.py research/qemu.adt --qemu
 tools/mkpayload.py xnu/out/kernel.development.sweet research/qemu.adt research/qemu.bin \
-    --cmdline 'debug=0xc serial=3 cpus=1 keepsyms=1 -enable_kprintf_spam -noprogress'
-tools/qemu-sweet.py research/qemu.bin research/qemu-run --secs 10 \
+    --ramdisk research/root-hfs.img \
+    --cmdline 'debug=0xc serial=3 cpus=1 keepsyms=1 -enable_kprintf_spam -noprogress rd=md0'
+tools/qemu-sweet.py research/qemu.bin research/qemu-run --secs 150 \
     --kernel xnu/out/kernel.development.sweet --fail-on-panic
 cat research/qemu-run/result.json research/qemu-run/fb.txt
 ```
@@ -130,7 +195,7 @@ the bootloader, panel and PSCI conduit still require phone validation.
 
 ## Key hardware facts
 
-- RAM at `0x80000000`; XNU gets `0xb0000000` + `0x4d000000`, above every Qualcomm XPU carve-out (mapping those cacheable faults).
+- RAM has low and upper banks. Current phone payloads use `--highmem`: `0x100000000` + `0xfcc00000` (about 3.95 GiB), above the low-bank carve-outs. The original fallback is `0xb0000000` + `0x4d000000` (about 1.2 GiB). Mapping protected Qualcomm carve-outs cacheable faults.
 - GICv3 with security extensions: Group 0 is secure, so the timer must go through Group 1 IRQ (vtimer INTID 19), not FIQ like on Apple silicon.
 - PSCI over `smc` (not `hvc`), 19.2 MHz timer, 8 cores, ARMv8.2 without PAC.
 - Panel: 1080x2400 DSC video mode, continuous splash, no refresh kick needed.
