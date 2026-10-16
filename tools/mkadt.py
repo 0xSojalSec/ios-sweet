@@ -123,7 +123,9 @@ def build(seed=None, qemu=False, highmem=False):
 
     # pmap_compute_max_asids requires the node even when no overrides are set.
     # An absent pmap-max-asids property selects XNU's own MAX_ASIDS default.
-    defaults = node('defaults', [ph()])
+    # No effaceable storage: keybagd then reads /private/var/keybags/systembag.kb
+    # as a plain plist instead of decrypting it with the effaceable key.
+    defaults = node('defaults', [ph(), ('no-effaceable-storage', u32(1))])
 
     return node('device-tree', [
         ph(),
