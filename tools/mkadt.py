@@ -66,6 +66,9 @@ def build(seed=None, qemu=False, highmem=False):
         # it exists (bind mounts /private/preboot/<hex>/usr/standalone/firmware,
         # tolerating a missing directory). Fixed stand-in value.
         ('boot-manifest-hash', BOOT_MANIFEST_HASH),
+        # libimg4 (cryptexd) aborts "failed to get crypto algorithm" without
+        # it; real A11+ device trees say sha2-384.
+        ('crypto-hash-method', cstr('sha2-384')),
     ], [node('memory-map', [ph()]),
         # Local boot policy (kern_csr.c): SIP relaxed like `csrutil disable`
         # (lp-sip0: untrusted kexts, unrestricted FS, task_for_pid, kernel
