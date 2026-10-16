@@ -41,7 +41,7 @@
   *
   * Interfaces no kernel path uses on SWEET (they serve other Apple kexts)
   * panic with a clear message instead of being NULL.
-@@ -20,19 +27,44 @@
+@@ -20,19 +27,45 @@
  #include <kern/startup.h>
  #include <libkern/amfi/amfi.h>
  #include <mach/kern_return.h>
@@ -49,6 +49,7 @@
 +#include <sys/mount.h>
  #include <sys/proc.h>
  #include <sys/systm.h>
++#include <sys/ubc_internal.h>
 +#include <sys/vnode.h>
 +#include <security/mac_policy.h>
 +
@@ -89,7 +90,7 @@
  }
  
  static CEError_t
-@@ -51,10 +83,9 @@
+@@ -51,10 +84,9 @@
  }
  
  static bool
@@ -102,37 +103,36 @@
  }
  
  static bool
-@@ -85,60 +116,91 @@
+@@ -85,60 +117,100 @@
  	return KERN_NOT_SUPPORTED;
  }
  
 +/*
-+ * Called once per code signature while it is being added (the blob is still
-+ * the writable copy, its storage final): attach the parsed entitlements.
++ * Attach the parsed XML entitlements to a code signature being added. This
++ * must happen in the vnode_check_signature MAC hook, like AMFI does: later,
++ * converting a 4K-page signature to multilevel hashes drops the XML blob.
++ * Nothing is granted when the blob is missing, unreadable or does not match
++ * its code directory hash.
 + */
- static kern_return_t
--sweet_amfi_adjust_without_monitor(__unused void *os_entitlements,
--    __unused struct cs_blob *code_signing_blob)
-+sweet_amfi_adjust_without_monitor(void *os_entitlements,
-+    struct cs_blob *code_signing_blob)
- {
--	/* Leave the blob without an entitlements context: it has none. */
++static void
++sweet_amfi_attach_entitlements(struct cs_blob *code_signing_blob)
++{
 +	void *xml = NULL;
 +	size_t xml_len = 0;
 +
-+	if (os_entitlements != NULL) {
-+		return KERN_SUCCESS;
-+	}
 +	if (csblob_get_entitlements(code_signing_blob, &xml, &xml_len) != 0) {
-+		return KERN_DENIED;     /* blob does not match its code directory hash */
++		printf("SWEET AMFI: %s: entitlements do not match the code directory, granting none\n",
++		    csblob_get_identity(code_signing_blob));
++		return;
 +	}
 +	if (xml == NULL) {
-+		return KERN_SUCCESS;    /* no XML entitlements */
++		return;                 /* no XML entitlements */
 +	}
 +	void *ent = sweet_entitlements_create(xml, xml_len);
 +	if (ent == NULL) {
-+		printf("SWEET AMFI: unreadable entitlements (%zu bytes), granting none\n", xml_len);
-+		return KERN_SUCCESS;
++		printf("SWEET AMFI: %s: unreadable entitlements (%zu bytes), granting none\n",
++		    csblob_get_identity(code_signing_blob), xml_len);
++		return;
 +	}
 +	if (sweet_amfi_debug) {
 +		/* The test keys only exist in tools/mkinit.py test signatures. */
@@ -144,6 +144,14 @@
 +	}
 +	csblob_os_entitlements_set(code_signing_blob, ent);    /* takes a reference */
 +	osobject_release(ent);
++}
++
+ static kern_return_t
+ sweet_amfi_adjust_without_monitor(__unused void *os_entitlements,
+     __unused struct cs_blob *code_signing_blob)
+ {
+-	/* Leave the blob without an entitlements context: it has none. */
++	/* Entitlements were attached in sweet_amfi_vnode_check_signature. */
  	return KERN_SUCCESS;
  }
  
@@ -219,7 +227,7 @@
  }
  
  static const amfi_t sweet_amfi = {
-@@ -170,7 +232,45 @@
+@@ -170,7 +242,52 @@
  sweet_amfi_register(void)
  {
  	amfi_interface_register(&sweet_amfi);
@@ -228,10 +236,14 @@
  }
  STARTUP(EARLY_BOOT, STARTUP_RANK_MIDDLE, sweet_amfi_register);
 +
-+/* Every signed binary on the root filesystem is a platform binary. */
++/*
++ * Every signed binary on the root filesystem is a platform binary. New
++ * signatures (ubc_cs_blob_add passes its writable copy; revalidation passes
++ * the read-only blob itself) get their entitlements here.
++ */
 +static int
 +sweet_amfi_vnode_check_signature(struct vnode *vp, __unused struct label *label,
-+    __unused cpu_type_t cpu_type, __unused struct cs_blob *cs_blob,
++    __unused cpu_type_t cpu_type, struct cs_blob *cs_blob,
 +    unsigned int *cs_flags, __unused unsigned int *signer_type,
 +    __unused int flags, __unused unsigned int platform,
 +    __unused char **fatal_failure_desc, __unused size_t *fatal_failure_desc_len)
@@ -239,6 +251,9 @@
 +	mount_t mp = vnode_mount(vp);
 +	if (mp != NULL && (vfs_flags(mp) & MNT_ROOTFS)) {
 +		*cs_flags |= CS_PLATFORM_BINARY;
++	}
++	if (cs_blob != cs_blob->csb_ro_addr && cs_blob->csb_entitlements == NULL) {
++		sweet_amfi_attach_entitlements(cs_blob);
 +	}
 +	return 0;
 +}
