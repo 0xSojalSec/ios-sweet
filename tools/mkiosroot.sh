@@ -95,6 +95,16 @@ for c in OS App; do
 	done
 done
 
+# logd's log stores, normally made at restore: it checks owner _logd (272)
+# and mode, plus a .migrated marker, else asks a helper and crashes
+# ("BUG IN LIBTRACE: Failed to migrate directory").
+db="$work/root/private/var/db"
+sudo install -d -o 272 -g 272 -m 0751 "$db/diagnostics"
+sudo install -d -o 272 -g 272 -m 0755 "$db/uuidtext" "$db/diagnostics/timesync"
+for d in diagnostics uuidtext diagnostics/timesync; do
+	sudo install -o 272 -g 272 -m 0644 /dev/null "$db/$d/.migrated"
+done
+
 # System keybag for the built-in AppleKeyStore (no passcode).
 sudo install -d -m 0700 -o 0 -g 0 "$work/root/private/var/keybags"
 printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' \
