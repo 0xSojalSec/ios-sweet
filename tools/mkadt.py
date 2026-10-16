@@ -54,7 +54,13 @@ def build(seed=None, qemu=False):
         ('debug-enabled', u32(1)),
         ('firmware-version', cstr('sweet-shim')),
         ('system-firmware-version', cstr('sweet-shim')),
-    ], [node('memory-map', [ph()])])
+    ], [node('memory-map', [ph()]),
+        # Local boot policy (kern_csr.c): SIP relaxed like `csrutil disable`
+        # (lp-sip0: untrusted kexts, unrestricted FS, task_for_pid, kernel
+        # debugger, dtrace, nvram), lp-sip1: unauthenticated (unsealed) root.
+        # The iOS shared cache is in no trust cache, so dyld can only map it
+        # with CSR_ALLOW_UNRESTRICTED_FS (vm_unix.c shared region checks).
+        node('asmb', [ph(), ('lp-sip0', u64(0x6f)), ('lp-sip1', u32(1))])])
 
     cpu0 = node('cpu0', [
         ph(),
