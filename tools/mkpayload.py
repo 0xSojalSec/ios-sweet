@@ -30,7 +30,6 @@ import argparse, os, struct, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import adt  # noqa: E402
-from mkadt import MEM_SIZE, PHYS_BASE  # noqa: E402
 
 LC_SEGMENT_64, LC_UNIXTHREAD, LC_DYLD_CHAINED_FIXUPS = 0x19, 0x5, 0x80000034
 PAGE = 0x4000
@@ -133,6 +132,14 @@ def add_ramdisk_to_adt(adt_blob, phys, size):
     return adt.serialize(root)
 
 
+def adt_dram(adt_blob):
+    """Kernel-managed RAM <base, size> from the ADT's /chosen dram-base/dram-size."""
+    root, _ = adt.parse(adt_blob)
+    chosen = next(c for c in root.children if c.name == 'chosen')
+    return (struct.unpack('<Q', chosen.prop('dram-base'))[0],
+            struct.unpack('<Q', chosen.prop('dram-size'))[0])
+
+
 def build(kernel_path, adt_path, cmdline, ramdisk_path=None):
     buf = bytearray(open(kernel_path, 'rb').read())
     m = parse_macho(buf)
@@ -147,6 +154,8 @@ def build(kernel_path, adt_path, cmdline, ramdisk_path=None):
     kernel_end = (kernel_end + PAGE - 1) & ~(PAGE - 1)
 
     adt_blob = open(adt_path, 'rb').read()
+    # The ADT decides where the kernel's RAM is (mkadt.py --highmem).
+    PHYS_BASE, MEM_SIZE = adt_dram(adt_blob)
     pieces = [(s['vmaddr'], s['vmsize'], buf[s['fileoff']:s['fileoff'] + s['filesize']]) for s in segs]
     ramdisk = None
     if ramdisk_path:

@@ -2,7 +2,7 @@
 """Build the minimal Apple Device Tree that the SWEET xnu needs to boot.
 
 Only what the early boot path actually reads (see NOTES.md); every MMIO
-address comes from the sweet live FDT. Usage:  mkadt.py OUT.adt [--dump] [--qemu]
+address comes from the sweet live FDT. Usage:  mkadt.py OUT.adt [--dump] [--qemu] [--highmem]
 """
 import os, struct, sys
 
@@ -12,6 +12,11 @@ import adt  # noqa: E402
 # Kernel-managed RAM: above every Qualcomm XPU carve-out (see NOTES.md)
 PHYS_BASE = 0xb0000000
 MEM_SIZE = 0x4d000000
+# --highmem (phone only): the whole upper DDR bank. The live FDT memory node is
+# <0x80000000 2G>, <0x1_00000000 0xfcc00000>; every fixed reserved-memory
+# carve-out is in the low bank and the dynamic pools are limited below 4G.
+HIGH_PHYS_BASE = 0x100000000
+HIGH_MEM_SIZE = 0xfcc00000
 # /arm-io children are relative to this; it must not be 0 (serial_init bails)
 SOC_BASE = 0x01000000
 
@@ -39,8 +44,10 @@ def node(name, props=(), children=()):
     return n
 
 
-def build(seed=None, qemu=False):
+def build(seed=None, qemu=False, highmem=False):
     """qemu=True: same tree, but with QEMU virt's GIC addresses and CNTFRQ (tools/qemu-sweet.py)."""
+    assert not (qemu and highmem), 'QEMU virt has no RAM at the phone high bank'
+    phys_base, mem_size = (HIGH_PHYS_BASE, HIGH_MEM_SIZE) if highmem else (PHYS_BASE, MEM_SIZE)
     gicd, gicr, timebase = (QEMU_GICD, QEMU_GICR, QEMU_TIMEBASE) if qemu else (GICD, GICR, TIMEBASE)
     seed = seed if seed is not None else os.urandom(64)
     phandle = iter(range(1, 1000))
@@ -48,8 +55,8 @@ def build(seed=None, qemu=False):
 
     chosen = node('chosen', [
         ph(),
-        ('dram-base', u64(PHYS_BASE)),
-        ('dram-size', u64(MEM_SIZE)),
+        ('dram-base', u64(phys_base)),
+        ('dram-size', u64(mem_size)),
         ('random-seed', seed),
         ('debug-enabled', u32(1)),
         ('firmware-version', cstr('sweet-shim')),
@@ -124,7 +131,7 @@ def build(seed=None, qemu=False):
 
 
 if __name__ == '__main__':
-    root = build(qemu='--qemu' in sys.argv)
+    root = build(qemu='--qemu' in sys.argv, highmem='--highmem' in sys.argv)
     blob = adt.serialize(root)
     open(sys.argv[1], 'wb').write(blob)
     if '--dump' in sys.argv:
