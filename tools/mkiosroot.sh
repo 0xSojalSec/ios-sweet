@@ -78,6 +78,23 @@ for f in "$work/root/$dsc"/*; do
 	sudo ln "$f" "$work/root/System/Library/Caches/com.apple.dyld/${f##*/}"
 done
 
+# dyld does not search the cryptexes at ignition level 1: hard-link every
+# cryptex file that has no counterpart in the OS root (libobjc-trampolines,
+# libffi-trampolines, libstdc++, ...) to its root path.
+for c in OS App; do
+	(cd "$work/root/private/preboot/Cryptexes/$c" && sudo find . ! -type d ! -path './System/Library/Caches/com.apple.dyld/*') |
+	while IFS= read -r f; do
+		f=${f#./}
+		if ! sudo test -e "$work/root/$f" && ! sudo test -L "$work/root/$f"; then
+			sudo mkdir -p "$work/root/$(dirname "$f")"
+			src="$work/root/private/preboot/Cryptexes/$c/$f"
+			# Linux hfsplus cannot hard-link symlinks: copy those.
+			if sudo test -L "$src"; then sudo cp -P "$src" "$work/root/$f"; else sudo ln "$src" "$work/root/$f"; fi
+			echo "linked $c:/$f"
+		fi
+	done
+done
+
 # System keybag for the built-in AppleKeyStore (no passcode).
 sudo install -d -m 0700 -o 0 -g 0 "$work/root/private/var/keybags"
 printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' \
