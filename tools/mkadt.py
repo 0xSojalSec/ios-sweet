@@ -23,6 +23,7 @@ SOC_BASE = 0x01000000
 GICD, GICD_SIZE = 0x17a00000, 0x10000
 GICR, GICR_SIZE = 0x17a60000, 0x100000
 FB, FB_SIZE = 0x9c000000, 0x1700000
+SWEET_ECID = 0x5357454554000001  # 'SWEET' + 1, synthetic
 FB_W, FB_H, FB_STRIDE = 1080, 2400, 1080 * 4
 # Internal UFS host (ufshc@1d84000 "ufs_mem"); QEMU virt has none
 UFS, UFS_SIZE = 0x01d84000, 0x3000
@@ -74,6 +75,13 @@ def build(seed=None, qemu=False, highmem=False):
         # SpringBoard's FBSDisplayMode "infxinf@0x" invalid. 1080x2400 @3x =
         # 360x800 points (like iPhone X class devices).
         ('display-scale', u32(3)),
+        # XNU derives IOPlatformUUID (gethostuuid) from these on arm; without
+        # them CFPreferences cannot use kCFPreferencesCurrentHost (no ByHost
+        # files), so e.g. DataMigration never records LastSystemVersion and
+        # migrates on every boot. Synthetic ECID (not the phone's); chip-id
+        # of the A11 that the iPhone X userland expects.
+        ('unique-chip-id', struct.pack('<Q', SWEET_ECID)),
+        ('chip-id', u32(0x8015)),
     ], [node('memory-map', [ph()]),
         # Local boot policy (kern_csr.c): SIP relaxed like `csrutil disable`
         # (lp-sip0: untrusted kexts, unrestricted FS, task_for_pid, kernel
