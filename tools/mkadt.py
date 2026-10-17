@@ -69,6 +69,11 @@ def build(seed=None, qemu=False, highmem=False):
         # libimg4 (cryptexd) aborts "failed to get crypto algorithm" without
         # it; real A11+ device trees say sha2-384.
         ('crypto-hash-method', cstr('sha2-384')),
+        # MobileGestalt's screen class: display-scale (u32, default 0) comes
+        # from /chosen, the pixel size from IOMobileFramebuffer. Scale 0 makes
+        # SpringBoard's FBSDisplayMode "infxinf@0x" invalid. 1080x2400 @3x =
+        # 360x800 points (like iPhone X class devices).
+        ('display-scale', u32(3)),
     ], [node('memory-map', [ph()]),
         # Local boot policy (kern_csr.c): SIP relaxed like `csrutil disable`
         # (lp-sip0: untrusted kexts, unrestricted FS, task_for_pid, kernel
