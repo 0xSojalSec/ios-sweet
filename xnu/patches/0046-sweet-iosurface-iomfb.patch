@@ -116,7 +116,7 @@
 +#endif /* _SWEET_SURFACE_H */
 --- /dev/null
 +++ b/iokit/Kernel/arm/SweetSurface.cpp
-@@ -0,0 +1,827 @@
+@@ -0,0 +1,872 @@
 +/*
 + * Built-in IOSurface for SWEET.
 + *
@@ -191,12 +191,17 @@
 +static uint32_t      sweet_surface_users[SWEET_SURFACE_MAX_ID];
 +static uint32_t      sweet_surface_next_id = 1;
 +static uint32_t      sweet_surface_creates_logged;
++static uint64_t      sweet_surface_wired;       /* bytes of buffer surfaces */
++#define SWEET_SURFACE_WIRED_MAX         (1536ull << 20)
 +
 +OSDefineMetaClassAndStructors(SweetSurface, OSObject);
 +
 +void
 +SweetSurface::free()
 +{
++	if (OSDynamicCast(IOBufferMemoryDescriptor, memory) != NULL) {
++		OSAddAtomic64(-(SInt64)allocSize, (volatile SInt64 *)&sweet_surface_wired);
++	}
 +	OSSafeReleaseNULL(kernelMap);
 +	OSSafeReleaseNULL(memory);
 +	OSSafeReleaseNULL(state);
@@ -410,6 +415,9 @@
 +	}
 +	s->bytesPerRow = sweet_dict_u32(props, "IOSurfaceBytesPerRow",
 +	    sweet_row_bytes(s->width, s->elementWidth, s->bytesPerElement));
++	if (s->bytesPerRow < (uint64_t)sweet_div_up(s->width, s->elementWidth) * s->bytesPerElement) {
++		return kIOReturnBadArgument;
++	}
 +	end = (uint64_t)s->offset + (uint64_t)s->bytesPerRow * sweet_div_up(s->height, s->elementHeight);
 +
 +	OSArray *planes = OSDynamicCast(OSArray, props->getObject("IOSurfacePlaneInfo"));
@@ -637,6 +645,15 @@
 +		return kIOReturnVMError;
 +	}
 +	IOLockLock(fLock);
++	SweetSurfaceRef *raced = findRef(s->id, NULL);
++	if (raced != NULL && raced->surface == s) {
++		/* Another thread mapped it meanwhile: count there, drop ours. */
++		raced->count++;
++		IOLockUnlock(fLock);
++		ref->release();
++		*refOut = raced;
++		return kIOReturnSuccess;
++	}
 +	fRefs->setObject(ref);
 +	IOLockUnlock(fLock);
 +	ref->release();         /* fRefs holds it */
@@ -723,11 +740,16 @@
 +	}
 +	uint8_t *out = (uint8_t *)IOMallocZeroData(SWEET_SURFACE_RESULT_SIZE);
 +	if (out == NULL) {
-+		return kIOReturnNoMemory;
++		ret = kIOReturnNoMemory;
++	} else {
++		sweet_surface_fill_result(s, ref, out);
++		ret = sweet_struct_out(args, out, SWEET_SURFACE_RESULT_SIZE);
++		IOFreeData(out, SWEET_SURFACE_RESULT_SIZE);
 +	}
-+	sweet_surface_fill_result(s, ref, out);
-+	ret = sweet_struct_out(args, out, SWEET_SURFACE_RESULT_SIZE);
-+	IOFreeData(out, SWEET_SURFACE_RESULT_SIZE);
++	if (ret != kIOReturnSuccess) {
++		/* The caller never learns the id: undo this create/lookup. */
++		trapRelease((void *)(uintptr_t)s->id, NULL, NULL, NULL, NULL, NULL);
++	}
 +	return ret;
 +}
 +
@@ -770,9 +792,14 @@
 +	s->parentID = args->scalarInputCount > 0 ? (uint32_t)args->scalarInput[0] : 0;
 +	ret = sweet_surface_layout(s, props);
 +	if (ret == kIOReturnSuccess) {
-+		IOBufferMemoryDescriptor *mem = IOBufferMemoryDescriptor::inTaskWithOptions(kernel_task,
-+		    kIODirectionInOut | kIOMemoryKernelUserShared, s->allocSize, page_size);
++		IOBufferMemoryDescriptor *mem = NULL;
++		if ((uint64_t)OSAddAtomic64(s->allocSize, (volatile SInt64 *)&sweet_surface_wired) +
++		    s->allocSize <= SWEET_SURFACE_WIRED_MAX) {
++			mem = IOBufferMemoryDescriptor::inTaskWithOptions(kernel_task,
++			    kIODirectionInOut | kIOMemoryKernelUserShared, s->allocSize, page_size);
++		}
 +		if (mem == NULL) {
++			OSAddAtomic64(-(SInt64)s->allocSize, (volatile SInt64 *)&sweet_surface_wired);
 +			ret = kIOReturnNoMemory;
 +		} else {
 +			bzero(mem->getBytesNoCopy(), s->allocSize);
@@ -883,11 +910,29 @@
 +	return kIOReturnSuccess;
 +}
 +
++/* Retained surface this client created or looked up, or NULL. */
++static SweetSurface *
++sweet_surface_held(IOLock *lock, OSArray *refs, uint32_t id)
++{
++	SweetSurface *s = NULL;
++	IOLockLock(lock);
++	for (unsigned int i = 0; i < refs->getCount(); i++) {
++		SweetSurfaceRef *ref = (SweetSurfaceRef *)refs->getObject(i);
++		if (ref->surface->id == id) {
++			s = ref->surface;
++			s->retain();
++			break;
++		}
++	}
++	IOLockUnlock(lock);
++	return s;
++}
++
 +IOReturn
 +IOSurfaceRootUserClient::trapLock(void *id, __unused void *options, void *seedOut,
 +    void *, void *, void *)
 +{
-+	SweetSurface *s = sweet_surface_copy((uint32_t)(uintptr_t)id);
++	SweetSurface *s = sweet_surface_held(fLock, fRefs, (uint32_t)(uintptr_t)id);
 +	if (s == NULL) {
 +		return kIOReturnNotFound;
 +	}
@@ -900,7 +945,7 @@
 +IOSurfaceRootUserClient::trapUnlock(void *id, void *options, void *seedOut,
 +    void *, void *, void *)
 +{
-+	SweetSurface *s = sweet_surface_copy((uint32_t)(uintptr_t)id);
++	SweetSurface *s = sweet_surface_held(fLock, fRefs, (uint32_t)(uintptr_t)id);
 +	if (s == NULL) {
 +		return kIOReturnNotFound;
 +	}
@@ -946,7 +991,7 @@
 +#endif /* SWEET */
 --- /dev/null
 +++ b/iokit/Kernel/arm/SweetFramebuffer.cpp
-@@ -0,0 +1,432 @@
+@@ -0,0 +1,455 @@
 +/*
 + * Built-in IOMobileFramebuffer for SWEET: the ABL's continuous-splash
 + * framebuffer (1080x2400 a8r8g8b8 in RAM, the panel scans it out by
@@ -1096,6 +1141,8 @@
 +	fWorkLoop = IOWorkLoop::workLoop();
 +	if (fLock == NULL || fClients == NULL || fPixels == 0 || fWorkLoop == NULL) {
 +		IOLog("SWEET FB: setup failed\n");
++		OSSafeReleaseNULL(fSurface);    /* stays published: also held by the table */
++		OSSafeReleaseNULL(fWorkLoop);
 +		return false;
 +	}
 +	fVsync = IOTimerEventSource::timerEventSource(this, &AppleCLCD::vsyncFired);
@@ -1228,7 +1275,13 @@
 +		if (h > (int32_t)fHeight - dy) {
 +			h = (int32_t)fHeight - dy;
 +		}
-+		if (src != 0 && bpe == 4 && w > 0 && h > 0) {
++		uint64_t last = (uint64_t)s->offset + (uint64_t)(sy + h - 1) * s->bytesPerRow +
++		    (uint64_t)(sx + w) * 4;
++		if (w <= 0 || h <= 0 || s->elementWidth != 1 || s->elementHeight != 1 ||
++		    s->memory == NULL || last > s->memory->getLength()) {
++			src = 0;
++		}
++		if (src != 0 && bpe == 4) {
 +			for (int32_t y = 0; y < h; y++) {
 +				memcpy((void *)(fPixels + (uint64_t)(dy + y) * fRowBytes + (uint64_t)dx * 4),
 +				    (const void *)(src + s->offset + (uint64_t)(sy + y) * s->bytesPerRow + (uint64_t)sx * 4),
@@ -1265,6 +1318,13 @@
 +{
 +	if (fFB != NULL) {
 +		fFB->removeClient(this);
++		IOLockLock(fFB->fLock);
++		mach_port_t old = fPort;
++		fPort = MACH_PORT_NULL;
++		IOLockUnlock(fFB->fLock);
++		if (old != MACH_PORT_NULL) {
++			releaseNotificationPort(old);
++		}
 +	}
 +	terminate();
 +	return kIOReturnSuccess;
@@ -1274,7 +1334,14 @@
 +IOMobileFramebufferUserClient::registerNotificationPort(mach_port_t port, __unused UInt32 type,
 +    __unused io_user_reference_t refCon)
 +{
++	mach_port_t old;
++	IOLockLock(fFB->fLock);
++	old = fPort;
 +	fPort = port;
++	IOLockUnlock(fFB->fLock);
++	if (old != MACH_PORT_NULL) {
++		releaseNotificationPort(old);
++	}
 +	return kIOReturnSuccess;
 +}
 +
@@ -1287,7 +1354,8 @@
 +	if (type >= SWEET_FB_NOTIFY_TYPES || fFunc[type] == 0 || fPort == MACH_PORT_NULL) {
 +		return;
 +	}
-+	setAsyncReference64(ref, fPort, (mach_vm_address_t)fFunc[type], fRefcon[type]);
++	bzero(ref, sizeof(ref));
++	setAsyncReference64(ref, fPort, (mach_vm_address_t)fFunc[type], fRefcon[type], fTask);
 +	sendAsyncResult64WithOptions(ref, kIOReturnSuccess, (io_user_reference_t *)values, count,
 +	    kIOUserNotifyOptionCanDrop);
 +}
