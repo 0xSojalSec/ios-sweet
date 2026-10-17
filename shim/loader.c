@@ -128,11 +128,7 @@ const char *loader_boot(uintptr_t dtb)
 	ba->Video.v_rowBytes = FB_STRIDE;
 	ba->Video.v_width = FB_W;
 	ba->Video.v_height = FB_H;
-	/*
-	 * 32 bpp; scale field (bits 16-23) = 1 -> 2x console font, readable in
-	 * phone videos (67x75 characters instead of 135x150).
-	 */
-	ba->Video.v_depth = 32 | (1 << 16);
+	ba->Video.v_depth = 32;
 	ba->deviceTreeP = adt_pa - pa_of_va_base;	/* xnu reads it with the MMU on: a VA */
 	ba->deviceTreeLength = (uint32_t)p->adt_size;
 	for (int i = 0; i < BOOT_LINE_LENGTH; i++)
