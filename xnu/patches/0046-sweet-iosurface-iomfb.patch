@@ -974,9 +974,9 @@
 + * enabled it, through the port they registered (IOConnectSetNotificationPort).
 + *
 + * The panel memory itself is published as an IOSurface and returned as the
-+ * default framebuffer surface. On the first swap the kernel text console
-+ * is paused so it no longer draws over the GUI (boot-arg sweetfb_console=1
-+ * keeps it).
++ * default framebuffer surface. The kernel text console keeps drawing over
++ * the GUI by default: pausing it (boot-arg sweetfb_noconsole=1, on the
++ * first swap) switches the console to serial, which also hides panics.
 + */
 +#include "SweetSurface.h"
 +
@@ -1172,9 +1172,9 @@
 +	uint32_t mask = get32(rec, 0x104);
 +
 +	if (!fConsolePaused) {
-+		int keep = 0;
++		int quiet = 0;
 +		fConsolePaused = true;
-+		if (!PE_parse_boot_argn("sweetfb_console", &keep, sizeof(keep)) || keep == 0) {
++		if (PE_parse_boot_argn("sweetfb_noconsole", &quiet, sizeof(quiet)) && quiet != 0) {
 +			PE_Video video;
 +			PE_current_console(&video);
 +			PE_initialize_console(&video, kPEDisableScreen);
