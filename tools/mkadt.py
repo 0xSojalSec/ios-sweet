@@ -103,6 +103,14 @@ def build(seed=None, qemu=False, highmem=False):
         # of the A11 that the iPhone X userland expects.
         ('unique-chip-id', struct.pack('<Q', SWEET_ECID)),
         ('chip-id', u32(0x8015)),
+        # Security status as on a dev-fused, undemoted board (tuple 0,0,1,1):
+        # MobileGestalt reads these from /chosen, and mobileactivationd's
+        # DeviceType then takes its native "Hactivation" branch (state
+        # Activated without an activation record; no SEP, no baseband here).
+        ('certificate-production-status', u32(0)),
+        ('effective-production-status-ap', u32(0)),
+        ('certificate-security-mode', u32(1)),
+        ('effective-security-mode-sep', u32(1)),
     ], [node('memory-map', [ph()]),
         # Local boot policy (kern_csr.c): SIP relaxed like `csrutil disable`
         # (lp-sip0: untrusted kexts, unrestricted FS, task_for_pid, kernel
