@@ -35,6 +35,27 @@ QEMU_VTIMER_INTID = 27
 
 BOOT_MANIFEST_HASH = hashlib.sha384(b'sweet boot manifest').digest()
 
+# The iOS userland is the iPhone X (iPhone10,3 / D22AP) IPSW. MobileGestalt
+# derives product type, device class, home-button-less UI, artwork etc. from
+# the root identity and /product of the real D22AP device tree. That tree is
+# an Apple artifact (kept out of git): extract it from the IPSW with
+#   tools/remotezip.py URL DeviceTree.d22ap.im4p DIR
+#   ipsw img4 im4p extract DIR/Firmware/all_flash/DeviceTree.d22ap.im4p -o d22ap.adt
+D22AP_ADT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../research/ipsw-x/d22ap.adt')
+
+
+def d22ap_product(path=D22AP_ADT):
+    """/product properties of the real D22AP tree, without the syscfg
+    placeholders iBoot would fill in (flag bit set) and the node bookkeeping."""
+    if not os.path.exists(path):
+        print(f'warning: {path} missing, no /product node', file=sys.stderr)
+        return None
+    root, _ = adt.parse(open(path, 'rb').read())
+    for c in root.children:
+        if dict((k, v) for k, f, v in c.props).get('name') == b'product\0':
+            return [(k, v) for k, f, v in c.props if not f and k not in ('name', 'AAPL,phandle')]
+    raise SystemExit(f'{path}: no /product node')
+
 u32 = lambda *v: struct.pack('<%dI' % len(v), *v)
 u64 = lambda *v: struct.pack('<%dQ' % len(v), *v)
 cstr = lambda s: s.encode() + b'\0'
@@ -157,14 +178,22 @@ def build(seed=None, qemu=False, highmem=False):
     # as a plain plist instead of decrypting it with the effaceable key.
     defaults = node('defaults', [ph(), ('no-effaceable-storage', u32(1))])
 
+    product_props = d22ap_product()
+    product = [node('product', [ph()] + product_props)] if product_props else []
+
+    # Identity of the iPhone X whose userland runs here: compatible[0] is
+    # hw.model/hw.target (D22AP), model is hw.machine/hw.product
+    # (iPhone10,3). 'xiaomi,sweet' stays for SweetPlatformExpert matching.
     return node('device-tree', [
         ph(),
-        ('compatible', cstr('xiaomi,sweet') + cstr('qcom,sm7150') + cstr('AppleARM')),
-        ('model', cstr('xiaomi,sweet')),
-        ('target-type', cstr('sweet')),
+        ('compatible', cstr('D22AP') + cstr('iPhone10,3') + cstr('xiaomi,sweet') + cstr('qcom,sm7150') + cstr('AppleARM')),
+        ('model', cstr('iPhone10,3')),
+        ('target-type', cstr('D22')),
+        ('target-sub-type', cstr('D22AP')),
+        ('manufacturer', cstr('Apple Inc.')),
         ('#address-cells', u32(2)),
         ('#size-cells', u32(2)),
-    ], [chosen, defaults, cpus, arm_io, fbcon] + ([] if qemu else [ufs]))
+    ], [chosen, defaults, cpus, arm_io, fbcon] + product + ([] if qemu else [ufs]))
 
 
 if __name__ == '__main__':
