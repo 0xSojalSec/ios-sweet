@@ -111,21 +111,33 @@ def build(seed=None, qemu=False, highmem=False):
         # with CSR_ALLOW_UNRESTRICTED_FS (vm_unix.c shared region checks).
         node('asmb', [ph(), ('lp-sip0', u64(0x6f)), ('lp-sip1', u32(1))])])
 
-    cpu0 = node('cpu0', [
-        ph(),
-        ('device_type', cstr('cpu')),
-        ('compatible', cstr('qcom,kryo470') + cstr('ARM,v8')),
-        ('reg', u32(0)),			# start.s: CPU number = MPIDR Aff0 (0 on sweet)
-        ('cpu-id', u32(0)),
-        ('state', cstr('running')),
-        ('timebase-frequency', u32(timebase)),
-        ('clock-frequency', u32(1804800000)),
-        ('bus-frequency', u32(100000000)),
-        ('memory-frequency', u32(1866000000)),
-        ('peripheral-frequency', u32(timebase)),
-        ('fixed-frequency', u32(timebase)),
-    ])
-    cpus = node('cpus', [ph(), ('#address-cells', u32(1)), ('#size-cells', u32(0))], [cpu0])
+    # SWEET SMP: advertise the six A55s in physical-core order. The kernel
+    # defaults to one and uses cpus=N to select an initial prefix (N <= 6).
+    # QEMU retains its original single-CPU tree: its MPIDRs differ from sweet.
+    cpu_nodes = []
+    for core in range(1 if qemu else 6):
+        cpu_nodes.append(node(f'cpu{core}', [
+            ph(),
+            ('device_type', cstr('cpu')),
+            ('compatible', cstr('qcom,kryo470') + cstr('ARM,v8')),
+            ('reg', u32(core << 8)),  # actual MPIDR Aff1:Aff0, NOT logical ID
+            ('cpu-id', u32(core)),   # descriptive: XNU assigns IDs by DT order
+            ('cluster-id', u32(0)),  # descriptive; see ml_parse_cpu_topology
+            ('cluster-type', u32(0)),  # homogeneous CLUSTER_TYPE_SMP, not AMP
+            ('die-cluster-id', u32(0)),
+            ('cluster-core-id', u32(core)),
+            ('l2-cache-id', u32(core)),  # distinct per-core L2 nodes in live FDT
+            ('l3-cache-id', u32(0)),     # shared L3
+            ('state', cstr('running' if core == 0 else 'stopped')),
+            ('timebase-frequency', u32(timebase)),
+            ('clock-frequency', u32(1804800000)),
+            ('bus-frequency', u32(100000000)),
+            ('memory-frequency', u32(1866000000)),
+            ('peripheral-frequency', u32(timebase)),
+            ('fixed-frequency', u32(timebase)),
+        ]))
+    cpus = node('cpus', [ph(), ('#address-cells', u32(1)),
+                         ('#size-cells', u32(0))], cpu_nodes)
 
     gic = node('gic', [
         ph(),
