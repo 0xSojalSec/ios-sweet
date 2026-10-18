@@ -178,6 +178,15 @@ def build(seed=None, qemu=False, highmem=False):
     # as a plain plist instead of decrypting it with the effaceable key.
     defaults = node('defaults', [ph(), ('no-effaceable-storage', u32(1))])
 
+    # MobileGestalt HomeButtonType = IODeviceTree:/buttons home-button-type
+    # (D22AP: 2, no Home button; absent = 0 = Home-button device).
+    buttons = node('buttons', [
+        ph(),
+        ('button-names', cstr('volup') + cstr('voldown') + cstr('hold')),
+        ('home-button-type', u32(2)),
+        ('opposed-power-vol-buttons', u32(1)),
+    ])
+
     product_props = d22ap_product()
     product = [node('product', [ph()] + product_props)] if product_props else []
 
@@ -193,7 +202,7 @@ def build(seed=None, qemu=False, highmem=False):
         ('manufacturer', cstr('Apple Inc.')),
         ('#address-cells', u32(2)),
         ('#size-cells', u32(2)),
-    ], [chosen, defaults, cpus, arm_io, fbcon] + product + ([] if qemu else [ufs]))
+    ], [chosen, defaults, cpus, arm_io, fbcon, buttons] + product + ([] if qemu else [ufs]))
 
 
 if __name__ == '__main__':
