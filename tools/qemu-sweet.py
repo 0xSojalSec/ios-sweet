@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Boot a SWEETXNU payload (tools/mkpayload.py) in QEMU's virt board.
 
-  qemu-sweet.py PAYLOAD OUTDIR [--secs N] [--gdb]
+  qemu-sweet.py PAYLOAD OUTDIR [--secs N] [--gdb] [--live-serial]
 
 Does what shim/loader.c does on the phone, but on the host: places the
 kernel segments, ADT and boot_args at their physical addresses and starts
@@ -20,13 +20,58 @@ snapshot of the circular screen, not a complete boot log. --fail-on-panic
 returns 2 when a panic is visible; absence of a panic does not prove boot.
 An undecodable or blank screen returns 3 with --fail-on-panic.
 """
-import argparse, json, os, socket, struct, subprocess, sys, time, zlib
+import argparse, json, os, shutil, socket, struct, subprocess, sys, time, zlib
 
 FB_BASE, FB_W, FB_H = 0x9c000000, 1080, 2400
 FB_STRIDE = FB_W * 4
 PAGE = 0x4000
 STUB_PA = 0x40200000	# above the dtb QEMU places at RAM base
 BOOT_LINE_LENGTH = 608
+
+
+def check_qemu_dependency(cpu='cortex-a76'):
+    """Verify qemu-system-aarch64 binary and CPU model support."""
+    qemu_bin = shutil.which('qemu-system-aarch64')
+    if not qemu_bin:
+        print('[!] Error: qemu-system-aarch64 not found in PATH.', file=sys.stderr)
+        print('    Install instructions:', file=sys.stderr)
+        print('      Arch Linux:    sudo pacman -S qemu-system-aarch64', file=sys.stderr)
+        print('      Ubuntu/Debian: sudo apt install qemu-system-arm', file=sys.stderr)
+        print('      Fedora:         sudo dnf install qemu-system-aarch64', file=sys.stderr)
+        print('      macOS:          brew install qemu', file=sys.stderr)
+        return False
+    try:
+        ver = subprocess.check_output([qemu_bin, '--version'], text=True).splitlines()[0]
+        print(f'[*] Found QEMU: {ver}', file=sys.stderr)
+    except Exception as e:
+        print(f'[!] Warning: Failed to query QEMU version: {e}', file=sys.stderr)
+        return False
+
+    try:
+        cpu_list = subprocess.check_output([qemu_bin, '-M', 'virt', '-cpu', 'help'], text=True)
+        if cpu in cpu_list:
+            print(f'[*] CPU model {cpu} supported', file=sys.stderr)
+        else:
+            print(f'[!] Warning: CPU model {cpu} not explicitly listed in qemu-system-aarch64 -cpu help', file=sys.stderr)
+    except Exception:
+        pass
+    return True
+
+
+def check_kernel_tools(kernel_path):
+    """Verify llvm-nm is available when --kernel is specified."""
+    if not shutil.which('llvm-nm'):
+        print('[!] Error: llvm-nm not found in PATH, required for --kernel font extraction.', file=sys.stderr)
+        print('    Install instructions:', file=sys.stderr)
+        print('      Arch Linux:    sudo pacman -S llvm', file=sys.stderr)
+        print('      Ubuntu/Debian: sudo apt install llvm', file=sys.stderr)
+        print('      Fedora:         sudo dnf install llvm', file=sys.stderr)
+        print('      macOS:          brew install llvm', file=sys.stderr)
+        return False
+    if not os.path.isfile(kernel_path):
+        print(f'[!] Error: kernel file does not exist: {kernel_path}', file=sys.stderr)
+        return False
+    return True
 
 
 def build_image(payload):
@@ -146,18 +191,65 @@ def qmp(sock_path, *cmds, pmemsave=None):
     return out
 
 
+def stream_serial_file(serial_path, file_pos, out_stream=sys.stdout):
+    """Read newly appended content from serial.txt and write directly to stream."""
+    if not os.path.exists(serial_path):
+        return file_pos
+    try:
+        with open(serial_path, 'r', errors='replace') as f:
+            f.seek(file_pos)
+            data = f.read()
+            if data:
+                out_stream.write(data)
+                out_stream.flush()
+                return f.tell()
+    except Exception:
+        pass
+    return file_pos
+
+
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument('payload'); ap.add_argument('outdir')
-    ap.add_argument('--secs', type=float, default=20)
+    ap = argparse.ArgumentParser(
+        description="Boot a SWEETXNU payload in QEMU's virt board.",
+        epilog="Examples:\n"
+               "  qemu-sweet.py payload.bin out/\n"
+               "  qemu-sweet.py payload.bin out/ --live-serial\n"
+               "  qemu-sweet.py payload.bin out/ --kernel kernel.macho --fail-on-panic\n"
+               "  qemu-sweet.py --check-env\n",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    ap.add_argument('payload', nargs='?', help='SWEETXNU payload binary (from mkpayload.py)')
+    ap.add_argument('outdir', nargs='?', help='Output directory for fb.png, regs.txt, and logs')
+    ap.add_argument('--secs', type=float, default=20, help='Duration to run QEMU in seconds (default: 20)')
     ap.add_argument('--gdb', action='store_true', help='start halted, gdb stub on :1234, no timeout')
     ap.add_argument('--hmp', action='append', default=[], help='extra monitor command run after stop (repeatable), e.g. "x /8gx 0xfffffe..."')
-    ap.add_argument('--cpu', default='cortex-a76')	# ARMv8.2 like Kryo 470, same ID_AA64MMFR0
+    ap.add_argument('--cpu', default='cortex-a76', help='QEMU CPU model (default: cortex-a76)')
     ap.add_argument('--kernel', help='matching unstripped kernel, for exact framebuffer text decoding (uses llvm-nm)')
     ap.add_argument('--fail-on-panic', action='store_true', help='exit 2 for a visible panic, 3 for incomplete/blank decoding; requires --kernel')
+    ap.add_argument('--live-serial', action='store_true', help='stream serial console output to stdout in real time')
+    ap.add_argument('--check-env', action='store_true', help='check QEMU installation and dependencies without running a payload')
     a = ap.parse_args()
+
+    if a.check_env:
+        ok = check_qemu_dependency(a.cpu)
+        if shutil.which('llvm-nm'):
+            print('[*] llvm-nm found in PATH', file=sys.stderr)
+        else:
+            print('[!] Optional: llvm-nm not found (needed only when using --kernel for text decoding)', file=sys.stderr)
+        return 0 if ok else 1
+
+    if not a.payload or not a.outdir:
+        ap.error('payload and outdir are required unless --check-env is specified')
+
     if a.fail_on_panic and not a.kernel:
         ap.error('--fail-on-panic requires --kernel')
+
+    if not check_qemu_dependency(a.cpu):
+        return 1
+
+    if a.kernel and not check_kernel_tools(a.kernel):
+        return 1
+
     payload = open(a.payload, 'rb').read()
     font = None
     if a.kernel:
@@ -189,41 +281,68 @@ def main():
            '-device', f'loader,addr={STUB_PA:#x},cpu-num=0']
     if a.gdb:
         cmd += ['-S', '-gdb', 'tcp::1234']
-    p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL)
-    if a.gdb:
-        print('gdb stub on :1234; QMP socket:', mon, file=sys.stderr)
-        p.wait()
-        return
-    t0 = time.time()
-    while p.poll() is None and time.time() - t0 < a.secs:
-        time.sleep(0.2)
-    result = {'status': 'qemu_exited', 'qemu_returncode': p.returncode}
-    if p.poll() is None:
-        _, regs, *extra = qmp(mon, 'stop', 'info registers', *a.hmp, pmemsave=(FB_BASE, FB_STRIDE * FB_H, f'{out}/fb.raw'))
-        open(f'{out}/regs.txt', 'w').write(regs + ''.join(f'\n(qemu) {c}\n{r}' for c, r in zip(a.hmp, extra)))
-        p.kill()
-        p.wait()
-        raw = open(f'{out}/fb.raw', 'rb').read()
-        write_png(f'{out}/fb.png', raw)
-        result = {'status': 'not_decoded'}
-        if font is not None:
-            screen, unknown = decode_screen(raw, font)
-            open(f'{out}/fb.txt', 'w').write(screen)
-            result = screen_result(screen, unknown)
-        os.unlink(f'{out}/fb.raw')
-    else:
-        print(f'qemu exited early: {p.returncode}', file=sys.stderr)
-    for f in ('ram.bin',):
-        os.unlink(f'{out}/{f}')
-    open(f'{out}/result.json', 'w').write(json.dumps(result, indent=2) + '\n')
-    print(json.dumps(result), file=sys.stderr)
-    print(f'{out}/fb.png  {out}/regs.txt  {out}/qemu.log', file=sys.stderr)
-    if a.fail_on_panic and result['status'] == 'panic':
-        return 2
-    if a.fail_on_panic and result['status'] in ('incomplete_decode', 'blank_screen'):
-        return 3
-    if result['status'] == 'qemu_exited':
-        return 1
+
+    p = None
+    serial_file = f'{out}/serial.txt'
+    serial_pos = 0
+
+    try:
+        p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL)
+        if a.gdb:
+            print('gdb stub on :1234; QMP socket:', mon, file=sys.stderr)
+            p.wait()
+            return 0
+
+        t0 = time.time()
+        while p.poll() is None and time.time() - t0 < a.secs:
+            if a.live_serial:
+                serial_pos = stream_serial_file(serial_file, serial_pos)
+            time.sleep(0.2)
+
+        if a.live_serial:
+            stream_serial_file(serial_file, serial_pos)
+
+        result = {'status': 'qemu_exited', 'qemu_returncode': p.returncode}
+        if p.poll() is None:
+            _, regs, *extra = qmp(mon, 'stop', 'info registers', *a.hmp, pmemsave=(FB_BASE, FB_STRIDE * FB_H, f'{out}/fb.raw'))
+            open(f'{out}/regs.txt', 'w').write(regs + ''.join(f'\n(qemu) {c}\n{r}' for c, r in zip(a.hmp, extra)))
+            p.kill()
+            p.wait()
+            raw = open(f'{out}/fb.raw', 'rb').read()
+            write_png(f'{out}/fb.png', raw)
+            result = {'status': 'not_decoded'}
+            if font is not None:
+                screen, unknown = decode_screen(raw, font)
+                open(f'{out}/fb.txt', 'w').write(screen)
+                result = screen_result(screen, unknown)
+            os.unlink(f'{out}/fb.raw')
+        else:
+            print(f'qemu exited early: {p.returncode}', file=sys.stderr)
+
+        open(f'{out}/result.json', 'w').write(json.dumps(result, indent=2) + '\n')
+        print(json.dumps(result), file=sys.stderr)
+        print(f'{out}/fb.png  {out}/regs.txt  {out}/qemu.log', file=sys.stderr)
+        if a.fail_on_panic and result['status'] == 'panic':
+            return 2
+        if a.fail_on_panic and result['status'] in ('incomplete_decode', 'blank_screen'):
+            return 3
+        if result['status'] == 'qemu_exited':
+            return 1
+        return 0
+
+    except KeyboardInterrupt:
+        print('\n[!] Interrupted by user, stopping QEMU...', file=sys.stderr)
+        if p and p.poll() is None:
+            p.kill()
+            p.wait()
+        return 130
+    finally:
+        ram_file = f'{out}/ram.bin'
+        if os.path.exists(ram_file):
+            try:
+                os.unlink(ram_file)
+            except Exception:
+                pass
 
 
 if __name__ == '__main__':
