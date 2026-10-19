@@ -22,6 +22,21 @@ set -euo pipefail
 os=$(realpath "$1") sysos=$(realpath "$2") appos=$(realpath "$3") out=$4 size=${5:-16G}
 [[ ! -e $out ]] || { echo "refusing to overwrite $out" >&2; exit 1; }
 
+# Pre-flight tool check
+missing_tools=()
+for tool in apfs-fuse mkfs.hfsplus rsync; do
+	command -v "$tool" >/dev/null 2>&1 || missing_tools+=("$tool")
+done
+
+if [[ ${#missing_tools[@]} -gt 0 ]]; then
+	echo "Error: missing required host utilities: ${missing_tools[*]}" >&2
+	echo "  Install instructions:" >&2
+	echo "    Arch Linux:    sudo pacman -S apfs-fuse hfsprogs rsync" >&2
+	echo "    Ubuntu/Debian: sudo apt install apfs-fuse hfsprogs rsync" >&2
+	echo "    Fedora:        sudo dnf install apfs-fuse hfsplus-tools rsync" >&2
+	exit 1
+fi
+
 work=$(mktemp -d)
 mounts=()
 cleanup() {
