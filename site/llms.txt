@@ -1,0 +1,22 @@
+# hackiosx.dev
+
+> Documentation for ios-sweet, an open-source project that boots Apple's real iOS 16.7.16 (the iPhone X userland) on a Redmi Note 10 Pro (Qualcomm Snapdragon 732G, codename sweet). It uses Apple's open-source XNU kernel (xnu-8796) with patches and new drivers for the phone's hardware. It is not an emulator or a launcher theme. Source: https://github.com/dipa-studio/ios-sweet
+
+Current state: boots to the iOS lock screen and home screen; touch, gesture navigation, buttons, Settings, Control Center and all 8 CPU cores work. No Wi-Fi, Bluetooth, cellular, audio, camera or GPU (the CPU renders everything). Only the Redmi Note 10 Pro runs it today; other Snapdragon phones with UFS storage can be ported.
+
+## Docs
+
+- [Home](https://hackiosx.dev/): what works, what is missing
+- [How it works](https://hackiosx.dev/how-it-works): boot chain (Xiaomi bootloader, shim, XNU, Apple Device Tree), where the drivers come from, why an iPhone X, software rendering, what is faked
+- [Compatibility](https://hackiosx.dev/compatibility): which phones could run it, grouped by chip family (Snapdragon, Tensor, MediaTek, Exynos)
+- [Port it to your phone](https://hackiosx.dev/porting): the hardware-specific files (tools/mkadt.py, shim/, board driver patches in xnu/patches/), where to find the values in the phone's device tree, first-boot stages
+- [Future plans](https://hackiosx.dev/future): Wi-Fi, Bluetooth, possible GPU acceleration
+
+## Source
+
+- [GitHub repository](https://github.com/dipa-studio/ios-sweet): README with full build and install steps for the Redmi Note 10 Pro
+- [Kernel patches](https://github.com/dipa-studio/ios-sweet/tree/main/xnu/patches)
+
+## Community
+
+- [r/hackios](https://www.reddit.com/r/hackios/): ports, questions and progress reports

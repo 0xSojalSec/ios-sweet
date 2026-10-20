@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Future plans | hackiosx</title>
+<meta name="description" content="What ios-sweet might get next: Wi-Fi, Bluetooth and possibly GPU acceleration.">
+<meta name="theme-color" content="#212121">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=3">
+</head>
+<body>
+<header class="appbar">
+<button class="menu-btn" aria-label="Menu" onclick="document.body.classList.toggle('nav-open')"><svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg></button>
+<a class="brand" href="index.html">hackios<b>x</b></a>
+<span class="spacer"></span>
+<a class="ext hide-sm" href="https://www.reddit.com/r/hackios/">r/hackios</a>
+<a class="ext" href="https://github.com/dipa-studio/ios-sweet">GitHub</a>
+</header>
+<nav class="drawer">
+<div class="head">hackios<b style="color:var(--accent);font-weight:500">x</b></div>
+<div class="sub">Docs</div>
+<a href="index.html">Home</a>
+<a href="how-it-works.html">How it works</a>
+<a href="compatibility.html">Compatibility</a>
+<a href="porting.html">Port it to your phone</a>
+<a href="future.html" class="active">Future plans</a>
+<hr>
+<div class="sub">Links</div>
+<a href="https://github.com/dipa-studio/ios-sweet">Source on GitHub</a>
+<a href="https://github.com/MakrSas/ios-topaz">Redmi Note 12 port</a>
+<a href="https://github.com/ch1tmdgus/ios-v60">LG V60 port</a>
+<a href="https://www.reddit.com/r/hackios/">r/hackios</a>
+</nav>
+<div class="scrim" onclick="document.body.classList.remove('nav-open')"></div>
+<main><div class="page">
+<h1>Future plans</h1>
+<p class="lead">No dates and no promises. This is a hobby project, and every new piece of hardware means writing a driver from scratch. Here's what's being looked at.</p>
+
+<h2 id="wi-fi-and-bluetooth">Wi-Fi and Bluetooth</h2>
+<p>The phone has a Qualcomm Wi-Fi and Bluetooth chip, and it's a lot more involved than the touchscreen was. Before the chip does anything, its firmware has to be loaded and it has to be brought up through Qualcomm's remote processor interface. After that, iOS needs to see it as a network interface its own Wi-Fi stack can drive, and Bluetooth needs something that looks like Apple's Bluetooth controller.</p>
+<p>A first step toward networking is already in the kernel: the phone can act as a USB network device, so the PC can ping it. Getting iOS itself to use that connection for the internet is still being worked on.</p>
+
+<h2 id="gpu-acceleration-maybe">GPU acceleration (maybe)</h2>
+<p>Right now the CPU draws every frame, which is why animations stutter. iOS draws through Apple's Metal interface, so a GPU driver would have to accept Metal work and turn it into commands for the Adreno 618. Nobody has done that for an Adreno GPU under iOS, and Apple doesn't document how its GPU drivers talk to the system.</p>
+<p>It might be possible. Open-source drivers for Adreno exist on Linux (freedreno), so the hardware side is fairly well understood. Still, this is the hardest item on the list by far. If it ever happens, it will take a long time.</p>
+
+<h2 id="more-phones">More phones</h2>
+<p>That part is up to you. Ports to other Snapdragon phones are the fastest way for this to grow. Start with the <a href="porting.html">porting guide</a> and share your progress on <a href="https://www.reddit.com/r/hackios/">r/hackios</a>.</p>
+
+<h2 id="follow-along">Follow along</h2>
+<p>The commit history on <a href="https://github.com/dipa-studio/ios-sweet">GitHub</a> is the most up-to-date status. Every kernel change is a numbered patch, and <a href="https://github.com/dipa-studio/ios-sweet/blob/main/NOTES.md">NOTES.md</a> logs each boot attempt, including the ones that failed.</p>
+<footer>hackiosx.dev documents the open-source <a href="https://github.com/dipa-studio/ios-sweet">ios-sweet</a> project. It is not affiliated with Apple. iOS is Apple's software and is not distributed here.</footer>
+</div></main>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a4da96b7ce505b82',t:'MTc5MjUyNjIxNg=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>

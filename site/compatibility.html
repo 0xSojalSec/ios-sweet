@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Compatibility | hackiosx</title>
+<meta name="description" content="Which Android phones could run ios-sweet, grouped by chip family: Snapdragon, MediaTek, Exynos, Tensor and others.">
+<meta name="theme-color" content="#212121">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=3">
+</head>
+<body>
+<header class="appbar">
+<button class="menu-btn" aria-label="Menu" onclick="document.body.classList.toggle('nav-open')"><svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg></button>
+<a class="brand" href="index.html">hackios<b>x</b></a>
+<span class="spacer"></span>
+<a class="ext hide-sm" href="https://www.reddit.com/r/hackios/">r/hackios</a>
+<a class="ext" href="https://github.com/dipa-studio/ios-sweet">GitHub</a>
+</header>
+<nav class="drawer">
+<div class="head">hackios<b style="color:var(--accent);font-weight:500">x</b></div>
+<div class="sub">Docs</div>
+<a href="index.html">Home</a>
+<a href="how-it-works.html">How it works</a>
+<a href="compatibility.html" class="active">Compatibility</a>
+<a href="porting.html">Port it to your phone</a>
+<a href="future.html">Future plans</a>
+<hr>
+<div class="sub">Links</div>
+<a href="https://github.com/dipa-studio/ios-sweet">Source on GitHub</a>
+<a href="https://github.com/MakrSas/ios-topaz">Redmi Note 12 port</a>
+<a href="https://github.com/ch1tmdgus/ios-v60">LG V60 port</a>
+<a href="https://www.reddit.com/r/hackios/">r/hackios</a>
+</nav>
+<div class="scrim" onclick="document.body.classList.remove('nav-open')"></div>
+<main><div class="page">
+<h1>Will it work on my phone?</h1>
+<p class="lead">Only one phone runs it today: the Redmi Note 10 Pro (<code>sweet</code>). Every other phone needs a port. How much work that port is depends almost entirely on the chip inside, so this page groups phones by chip family instead of listing models.</p>
+
+<h2 id="the-basics-your-phone-needs">The basics your phone needs</h2>
+<ul>
+<li><strong>An unlockable bootloader</strong> that supports <code>fastboot boot</code> (booting an image from the PC without flashing it). Xiaomi, Poco, OnePlus, Pixel and most Motorola phones can do this. Samsung phones use Odin instead of fastboot, and Huawei bootloaders can't be unlocked anymore.</li>
+<li><strong>A 64-bit ARM chip.</strong> Every phone from the last eight or so years has one.</li>
+<li><strong>UFS storage.</strong> ios-sweet has a UFS driver. Phones with eMMC storage (common in budget models) need a new storage driver first.</li>
+<li><strong>4 GB of RAM or more.</strong> The iPhone X has 3 GB, and the kernel can't use all of the phone's memory because Qualcomm reserves parts of it.</li>
+<li><strong>A screen the bootloader leaves on.</strong> ios-sweet draws into the image buffer the bootloader uses for its logo. Almost all Qualcomm phones do this.</li>
+</ul>
+
+<h2 id="chip-families">Chip families</h2>
+<div class="table-wrap"><table>
+<tr><th>Chip</th><th>Chance</th><th>What a port involves</th></tr>
+<tr>
+<td><strong>Snapdragon 730 / 730G / 732G</strong> (SM7150)<br>e.g. Poco X3 NFC, Poco X3, Redmi Note 10 Pro Max, Mi 9T, Mi Note 10, Pixel 4a</td>
+<td><span class="chip good">Best</span></td>
+<td>Same chip as the Redmi Note 10 Pro, so the kernel side mostly works as is. You change the board details: screen size, touch controller, button wiring, memory layout. If the phone uses a different touch chip, that driver needs a new protocol.</td>
+</tr>
+<tr>
+<td><strong>Snapdragon from 2018 on</strong><br>845, 855, 865, 870, 888, 8 Gen 1/2/3, 7xx, 690, 750G and most newer chips with UFS</td>
+<td><span class="chip good">Good</span></td>
+<td>Same building blocks as the 732G: the same interrupt controller type, the same kind of power controller (RPMh) and the same serial engines for I²C. Mostly the addresses differ, so a port means updating a few config values (memory map, storage, screen) and pointing the touch and button drivers at your phone's hardware. Some cheaper chips of this era (the 662 and 665, for example) still use the older RPM power controller, see the next row. The newest chips (8 Gen 1 and later) change a few blocks, like a newer PMIC bus, and need more work.</td>
+</tr>
+<tr>
+<td><strong>Older Snapdragon</strong><br>820/821, 835, 625, 636, 660 and similar</td>
+<td><span class="chip hard">Hard</span></td>
+<td>These use an older power controller (RPM instead of RPMh) and an older I²C block, so the touch power and touch drivers have to be rewritten. Many of them have eMMC storage. Their CPU cores are an older ARM generation than the iPhone X's chip, and nobody has tested whether iOS 16 runs well on them.</td>
+</tr>
+<tr>
+<td><strong>Snapdragon with eMMC</strong><br>many 4xx and some 6xx phones</td>
+<td><span class="chip hard">Hard</span></td>
+<td>Everything in the row above that matches your chip, plus a new eMMC (SDHCI) storage driver, since iOS has to live somewhere.</td>
+</tr>
+<tr>
+<td><strong>Google Tensor</strong> (Pixel 6 and later)</td>
+<td><span class="chip hard">Separate port</span></td>
+<td>The bootloader is friendly, but the chip is Google's own design, built on Samsung's platform up to Tensor G4, and shares almost nothing with Snapdragon. The shim and every driver would be new. Ports for these are separate projects.</td>
+</tr>
+<tr>
+<td><strong>MediaTek</strong> (Helio, Dimensity)</td>
+<td><span class="chip no">Probably not</span></td>
+<td>Different hardware from the ground up, bootloaders that are often hard to unlock, and vendor kernel sources that are harder to learn from. It's not impossible, but it would be a new project rather than a port.</td>
+</tr>
+<tr>
+<td><strong>Exynos, Unisoc, Kirin</strong></td>
+<td><span class="chip no">Probably not</span></td>
+<td>Same story as MediaTek. On top of that, Samsung phones have no <code>fastboot boot</code> and Huawei bootloaders can't be unlocked.</td>
+</tr>
+</table></div>
+
+<h2 id="quick-answers">Quick answers</h2>
+<h3>Poco X3 NFC? It has the same chip.</h3>
+<p>Most likely yes. It's the easiest port there is: same SoC, different board. See <a href="porting.html">Port it to your phone</a>.</p>
+<h3>My phone is MediaTek (Redmi Note 9, many Redmi and Realme models).</h3>
+<p>Probably not. Look up the exact chip first: some phones sold under the same name come in both a MediaTek and a Snapdragon version.</p>
+<h3>Can I run iPadOS on my Android tablet?</h3>
+<p>Not with this project. iPadOS comes from a different firmware and expects iPad hardware. The same approach could work in theory, but nobody has done it.</p>
+<h3>Can it run iOS 17, 18 or newer?</h3>
+<p>Not on this path. Every iPhone that runs iOS 17 or newer is built for pointer authentication (arm64e). The Snapdragon 732G in this phone, like most ARMv8.2 chips, doesn't have it, so this path stops at iOS 16 on the iPhone X. (<a href="how-it-works.html#why-an-iphone-x">Why an iPhone X?</a>)</p>
+<h3>How do I find out which chip I have?</h3>
+<p>Search your model on GSMArena and look at the "Chipset" line, or install an app like CPU-Z. The storage type (UFS or eMMC) is listed there too.</p>
+<footer>hackiosx.dev documents the open-source <a href="https://github.com/dipa-studio/ios-sweet">ios-sweet</a> project. It is not affiliated with Apple. iOS is Apple's software and is not distributed here.</footer>
+</div></main>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a4da96b48ebfb4b5',t:'MTc5MjUyNjIxNg=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>

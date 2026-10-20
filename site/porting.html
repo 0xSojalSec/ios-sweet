@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Port it to your phone | hackiosx</title>
+<meta name="description" content="The hardware-specific parts of ios-sweet, where to find your phone&#x27;s values, and how to test a port.">
+<meta name="theme-color" content="#212121">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=3">
+</head>
+<body>
+<header class="appbar">
+<button class="menu-btn" aria-label="Menu" onclick="document.body.classList.toggle('nav-open')"><svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg></button>
+<a class="brand" href="index.html">hackios<b>x</b></a>
+<span class="spacer"></span>
+<a class="ext hide-sm" href="https://www.reddit.com/r/hackios/">r/hackios</a>
+<a class="ext" href="https://github.com/dipa-studio/ios-sweet">GitHub</a>
+</header>
+<nav class="drawer">
+<div class="head">hackios<b style="color:var(--accent);font-weight:500">x</b></div>
+<div class="sub">Docs</div>
+<a href="index.html">Home</a>
+<a href="how-it-works.html">How it works</a>
+<a href="compatibility.html">Compatibility</a>
+<a href="porting.html" class="active">Port it to your phone</a>
+<a href="future.html">Future plans</a>
+<hr>
+<div class="sub">Links</div>
+<a href="https://github.com/dipa-studio/ios-sweet">Source on GitHub</a>
+<a href="https://github.com/MakrSas/ios-topaz">Redmi Note 12 port</a>
+<a href="https://github.com/ch1tmdgus/ios-v60">LG V60 port</a>
+<a href="https://www.reddit.com/r/hackios/">r/hackios</a>
+</nav>
+<div class="scrim" onclick="document.body.classList.remove('nav-open')"></div>
+<main><div class="page">
+<h1>Port it to your phone</h1>
+<p class="lead">On a Snapdragon phone, almost everything that is specific to the Redmi Note 10 Pro sits in three places: the device tree generator, the boot shim, and the board drivers in the kernel patches. This page walks through all three and shows where to look up your phone's values.</p>
+
+<div class="warn">
+<p><strong>Before you touch anything, back up your phone.</strong> Boot a recovery such as OrangeFox or TWRP and pull at least <code>persist</code>, <code>modemst1</code>, <code>modemst2</code>, <code>fsg</code>, <code>fsc</code>, <code>boot</code>, <code>dtbo</code> and <code>vbmeta</code>. Some of these hold calibration data that is unique to your phone and can't be downloaded anywhere. Keep them out of git.</p>
+</div>
+
+<p>Check the <a href="compatibility.html">compatibility page</a> first. This guide assumes a Snapdragon chip with UFS storage and a bootloader that supports <code>fastboot boot</code>.</p>
+
+<h2 id="step-0-get-your-phone-s-hardware-map">Step 0: get your phone's hardware map</h2>
+<p>Everything you need to know about the hardware is already on the phone, in the device tree Android booted with. Boot a recovery with adb (or use a rooted Android) and copy it to the PC:</p>
+<pre><code>adb shell cat /sys/firmware/fdt &gt; live.dtb
+adb shell cat /proc/iomem &gt; iomem.txt
+dtc -I dtb -O dts -o live.dts live.dtb      # dtc is in the device-tree-compiler package</code></pre>
+<p><code>live.dts</code> is a big text file. Every value below comes from searching it. You'll also want your phone's kernel source (Xiaomi, OnePlus and others publish it on GitHub) for anything the device tree doesn't spell out, like the touch controller's protocol.</p>
+<p>Also unpack your stock <code>boot.img</code>, because the shim reuses its DTB:</p>
+<pre><code>python3 tools/unpack_bootv2.py backup/boot.img dtb/boot_unpacked</code></pre>
+
+<h2 id="1-the-device-tree-generator-tools-mkadt-py">1. The device tree generator: <code>tools/mkadt.py</code></h2>
+<p>XNU learns about the hardware from an Apple Device Tree. <code>mkadt.py</code> writes one from the constants at the top of the file. These are the ones to change:</p>
+<div class="table-wrap"><table>
+<tr><th>Constant</th><th>What it is</th><th>Where to find it in live.dts</th></tr>
+<tr><td><code>HIGH_PHYS_BASE</code>, <code>HIGH_MEM_SIZE</code></td><td>The RAM the kernel may use</td><td>The <code>memory</code> node, plus every entry under <code>reserved-memory</code>. Pick a range with no carve-outs in it. On sweet that's the whole bank above 4 GB.</td></tr>
+<tr><td><code>GICD</code>, <code>GICR</code></td><td>Interrupt controller</td><td><code>interrupt-controller@...</code> with <code>compatible = "arm,gic-v3"</code>. The first two <code>reg</code> entries.</td></tr>
+<tr><td><code>FB</code>, <code>FB_SIZE</code></td><td>The screen buffer the bootloader leaves on</td><td><code>cont_splash_region</code> (sometimes <code>splash_region</code>) under <code>reserved-memory</code></td></tr>
+<tr><td><code>FB_W</code>, <code>FB_H</code>, <code>FB_STRIDE</code></td><td>Panel resolution and bytes per line</td><td>The panel node (<code>qcom,mdss_dsi_...</code>), <code>qcom,mdss-dsi-panel-width</code> and <code>-height</code>. Stride is usually width x 4.</td></tr>
+<tr><td><code>UFS</code>, <code>UFS_SIZE</code></td><td>The storage controller</td><td><code>ufshc@...</code>, the <code>reg</code> named <code>ufs_mem</code></td></tr>
+<tr><td><code>TIMEBASE</code>, <code>VTIMER_INTID</code></td><td>System timer</td><td>The <code>timer</code> node with <code>arm,armv8-timer</code>. The frequency is almost always 19.2 MHz on Snapdragon. The virtual timer is the third interrupt; a PPI number <em>n</em> becomes INTID 16 + <em>n</em>.</td></tr>
+<tr><td>CPU nodes</td><td>How many cores, and their hardware IDs</td><td>The <code>cpus</code> node: each core's <code>reg</code> (its MPIDR). sweet has 8 cores at <code>0x000</code> to <code>0x700</code>; the loop in <code>mkadt.py</code> builds them as <code>core &lt;&lt; 8</code>.</td></tr>
+</table></div>
+
+<h2 id="2-the-boot-shim-shim">2. The boot shim: <code>shim/</code></h2>
+<p>The shim is the small program the bootloader starts. It has its own copy of a few addresses, because it runs before any device tree is read:</p>
+<ul>
+<li><code>shim/console.h</code> and <code>shim/mmu.h</code>: the framebuffer address (<code>FB_BASE</code>, <code>FB_PHYS</code>).</li>
+<li><code>shim/shim.c</code>: <code>GICD_BASE</code>, <code>GICR_BASE</code>, the timer interrupts, <code>PSHOLD</code> (the reset register) and <code>IMEM_RESTART_REASON</code> (used to reboot into fastboot). Search live.dts for <code>restart@</code> / <code>qcom,pshold</code> and <code>restart_reason</code>.</li>
+<li><code>shim/build.sh</code>: the <code>mkbootimg</code> offsets and header version. Copy them from your stock boot.img: the unpack script prints its header with the load addresses and page size.</li>
+</ul>
+<p>Two kernel patches also draw on the screen very early, before the device tree is parsed: <code>0010-sweet-early-framebuffer-debug</code> and <code>0012-sweet-keep-debug-console-after-ttbr0</code>. They hard-code the framebuffer address and the 1080 x 2400 size. Change those too, or the early boot messages will land in the wrong place.</p>
+
+<h2 id="3-the-board-drivers-xnu-patches">3. The board drivers: <code>xnu/patches/</code></h2>
+<p>The kernel is Apple's source plus a numbered series of patches that GitHub Actions applies in order. Most patches are generic. These are the ones that know about the board:</p>
+<div class="table-wrap"><table>
+<tr><th>Patch</th><th>What to check</th></tr>
+<tr><td><code>0060-sweet-keys-touch-drivers</code></td><td>Buttons: the PMIC bus (SPMI) addresses and the register offsets of the power key (PON) and volume keys. Touch: which I²C serial engine the touch chip hangs off, its I²C address, and its reset and interrupt GPIOs. Search live.dts for your touch chip's node (<code>goodix</code>, <code>focaltech</code>, <code>novatek</code>, <code>synaptics</code>, ...).</td></tr>
+<tr><td><code>0062-sweet-touch-power-battery</code></td><td>The power rail the touch chip needs (on sweet, regulator <code>ldoc11</code> voted through RPMh). Your phone's touch node names its supply, like <code>vdd-supply</code> or <code>avdd-name</code>.</td></tr>
+<tr><td><code>0063-sweet-goodix-geni-packing</code></td><td>The Goodix GT9896 touch protocol. A different touch chip needs a different protocol here. The Linux driver for your chip in the vendor kernel source shows the register layout.</td></tr>
+<tr><td><code>0061-sweet-iphone-x-display-size</code></td><td>Centers the real panel inside the 1125 x 2436 screen that iOS sees, and maps touch coordinates. Uses 1080 x 2400 in a few places.</td></tr>
+<tr><td><code>0072</code> to <code>0077</code> (USB)</td><td>Optional. The USB controller addresses for the live log over USB. You can skip these at first and read the log from recovery.</td></tr>
+</table></div>
+<p>The patches add new files to XNU, such as <code>bsd/dev/sweet_touch.c</code>. To change one, apply the series to an <code>xnu-8796</code> tree, edit the file, and regenerate that patch with <code>diff -u</code>. Before you spend a CI run, <code>tools/xnu-cc.py</code> can compile a single file locally using the commands from a previous CI log.</p>
+
+<h2 id="4-boot-arguments">4. Boot arguments</h2>
+<p>The command line is baked into the payload by <code>tools/mkpayload.py</code> (see the README for the full line). For a first boot on a new phone, use <code>cpus=1</code>, and add <code>sweettouch=0 sweetkeys=0</code> until those drivers are adapted. Raise <code>cpus</code> once the kernel is stable.</p>
+
+<h2 id="5-build-and-boot">5. Build and boot</h2>
+<p>From here the steps are the same as on sweet and are in the <a href="https://github.com/dipa-studio/ios-sweet#how-to-do-it-yourself">README</a>: build the kernel on GitHub Actions, build the iOS root image from the iPhone X IPSW, pack the boot image, flash the root to <code>userdata</code>, then <code>fastboot boot</code> the shim.</p>
+<p>Take it in stages. You can test the shim and kernel before you flash anything: boot the shim alone, and it prints its own diagnostics to the screen.</p>
+<ol>
+<li><strong>Shim text on screen.</strong> Your framebuffer address is right.</li>
+<li><strong>Kernel messages scroll.</strong> Memory, interrupts and timer are right. If the phone reboots instantly, the memory range probably overlaps a protected carve-out.</li>
+<li><strong>The UFS driver finds the disk.</strong> Then iOS starts from <code>userdata</code>. This is the point where you flash the root image.</li>
+<li><strong>Apple logo, then the lock screen</strong> (after several minutes). Touch and buttons come last.</li>
+</ol>
+<p>When something crashes, read the log from recovery with <code>tools/sweet-log-pull.sh</code>, and <code>tools/sweet-crash.py</code> turns crash reports into function names. <a href="https://github.com/dipa-studio/ios-sweet/blob/main/NOTES.md">NOTES.md</a> has every problem sweet ran into along the way, and most of them will show up on your phone too.</p>
+
+<div class="note">
+<p>Got further on your phone? Post it on <a href="https://www.reddit.com/r/hackios/">r/hackios</a>. Which chip, which step you reached, and what you had to change helps everyone after you.</p>
+</div>
+<footer>hackiosx.dev documents the open-source <a href="https://github.com/dipa-studio/ios-sweet">ios-sweet</a> project. It is not affiliated with Apple. iOS is Apple's software and is not distributed here.</footer>
+</div></main>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a4da96b60d3fc2af',t:'MTc5MjUyNjIxNg=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
