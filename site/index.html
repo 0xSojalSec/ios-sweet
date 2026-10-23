@@ -4,99 +4,102 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>hackiosx: iOS on Android phones</title>
-<meta name="description" content="ios-sweet runs Apple&#x27;s real iOS 16 on a Snapdragon Android phone. How it works, which phones can run it, and how to port it to yours.">
+<meta name="description" content="Open-source projects that boot Apple&#x27;s real iOS 16 on Snapdragon Android phones: how they work, which phones can run them, and how to port them to yours.">
 <meta name="theme-color" content="#212121">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&family=Roboto+Mono&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 <header class="appbar">
 <button class="menu-btn" aria-label="Menu" onclick="document.body.classList.toggle('nav-open')"><svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg></button>
 <a class="brand" href="index.html">hackios<b>x</b></a>
 <span class="spacer"></span>
-<a class="ext hide-sm" href="https://www.reddit.com/r/hackios/">r/hackios</a>
-<a class="ext" href="https://github.com/dipa-studio/ios-sweet">GitHub</a>
+<a class="ext hide-sm" href="projects.html">Projects</a>
+<a class="ext" href="https://www.reddit.com/r/hackios/">r/hackios</a>
 </header>
 <nav class="drawer">
 <div class="head">hackios<b style="color:var(--accent);font-weight:500">x</b></div>
 <div class="sub">Docs</div>
 <a href="index.html" class="active">Home</a>
+<a href="projects.html">Projects</a>
 <a href="how-it-works.html">How it works</a>
 <a href="compatibility.html">Compatibility</a>
 <a href="porting.html">Port it to your phone</a>
-<a href="future.html">Future plans</a>
+<a href="future.html">Open problems</a>
 <hr>
-<div class="sub">Links</div>
-<a href="https://github.com/dipa-studio/ios-sweet">Source on GitHub</a>
-<a href="https://github.com/MakrSas/ios-topaz">Redmi Note 12 port</a>
-<a href="https://github.com/ch1tmdgus/ios-v60">LG V60 port</a>
+<div class="sub">Source</div>
+<a href="https://github.com/oosexgang/hackios-xnu-kernel">HackiOS (POCO X5 Pro)</a>
+<a href="https://github.com/dipa-studio/ios-sweet">ios-sweet (Redmi Note 10 Pro)</a>
+<a href="https://github.com/UniXNU/UniXNU">UniXNU (Xiaomi Pad 6S Pro)</a>
+<a href="projects.html#community-ports">Community ports</a>
+<hr>
 <a href="https://www.reddit.com/r/hackios/">r/hackios</a>
 </nav>
 <div class="scrim" onclick="document.body.classList.remove('nav-open')"></div>
 <main><div class="page">
-<h1>Real iOS on an Android phone</h1>
-<p class="lead">ios-sweet boots Apple's iOS 16.7.16 on a Redmi Note 10 Pro (Snapdragon 732G). It is the real thing: Apple's kernel built from its open-source code, and the system files of an iPhone X, with a handful of settings changed so it boots on foreign hardware. There is no emulator or launcher involved, and no Android running underneath.</p>
+<h1>Real iOS on Android phones</h1>
+<p class="lead">A growing set of open-source projects now boot Apple's real iOS and iPadOS on Android phones and tablets. They build Apple's own kernel (XNU) from its public source, write new drivers for the device's hardware, and run the system files from Apple's own firmware on top. On the device nothing is emulated: there is no launcher theme and no Android running underneath.</p>
 
 <div class="warn">
-<p><strong>This is a research project, not a daily driver.</strong> There is no Wi-Fi, no calls, no internet yet, and the security features are switched off. Installing it wipes the phone's user data partition, so everything on your Android install is gone.</p>
+<p><strong>These are research projects, not daily drivers.</strong> There are no calls, no Apple ID and no App Store downloads, and iOS's security features are switched off or stubbed. Try it on a spare phone, back it up first, and don't put personal data on it.</p>
 </div>
 
-<h2 id="where-it-is-right-now">Where it is right now</h2>
+<h2 id="the-projects">The projects</h2>
 <div class="grid">
-<div class="card">
-<h3>Works</h3>
-<ul>
-<li>Boots to the lock screen and home screen (about 4 minutes on the Apple logo)</li>
-<li>Touchscreen, swipe-up to go home, app switcher</li>
-<li>Power and volume buttons, screen lock and wake</li>
-<li>Settings, Control Center, notification center</li>
-<li>The App Store opens (installing apps is untested, since there is no internet yet)</li>
-<li>All 8 CPU cores</li>
-<li>Reads and writes its own storage</li>
-</ul>
+<a class="card" href="projects.html#hackios">
+<h3>HackiOS</h3>
+<p>POCO X5 Pro 5G (Snapdragon 778G), iOS 16.5. GPU-drawn interface, Wi-Fi, sound and the camera work. Runs from RAM, so Android stays on the phone. Also runs in QEMU on a PC.</p>
+<span class="more">Details</span>
+</a>
+<a class="card" href="projects.html#ios-sweet">
+<h3>ios-sweet</h3>
+<p>Redmi Note 10 Pro (Snapdragon 732G), iOS 16.7.16. Boots to the home screen with touch, buttons and all 8 cores. The CPU draws everything. Installs into the user data partition.</p>
+<span class="more">Details</span>
+</a>
+<a class="card" href="projects.html#unixnu">
+<h3>UniXNU</h3>
+<p>Xiaomi Pad 6S Pro (Snapdragon 8 Gen 2), iPadOS 17. Boots through UEFI, with Metal running on the Adreno GPU. Home screen, Settings and touch work.</p>
+<span class="more">Details</span>
+</a>
+<a class="card" href="projects.html#community-ports">
+<h3>Community ports</h3>
+<p>The first Google Pixel, Pixel 4, Pixel 6a, Redmi Note 12, POCO M8, LG V60 and even a Galaxy S7 with an Exynos chip. Most are built on ios-sweet, and several already draw on the GPU and have Wi-Fi.</p>
+<span class="more">Details</span>
+</a>
 </div>
-<div class="card">
-<h3>Missing</h3>
-<ul>
-<li>Wi-Fi, Bluetooth, mobile network</li>
-<li>Audio, camera, sensors, GPS, Face ID</li>
-<li>GPU: the CPU draws everything, at about 20 to 30 fps</li>
-<li>Real battery level (it always shows 100 %)</li>
-</ul>
-</div>
-</div>
+
+<h2 id="no-phone-try-it-on-your-pc">No phone? Try it on your PC</h2>
+<p>HackiOS also runs in QEMU on a Linux PC. Their README has the steps: it downloads the iOS 16.5 firmware from Apple, builds the system image on your machine, and opens iOS in a window, with the mouse acting as your finger. See the <a href="https://github.com/oosexgang/hackios-xnu-kernel#quick-start-qemu-no-kernel-build">HackiOS quick start</a>.</p>
 
 <h2 id="read-next">Read next</h2>
 <div class="grid">
 <a class="card" href="how-it-works.html">
 <h3>How it works</h3>
-<p>How the phone's hardware is driven from Apple's kernel, what the bootloader does, and how iOS is convinced it runs on an iPhone X.</p>
+<p>How a phone's bootloader ends up starting Apple's kernel, where the drivers come from, and how iOS is convinced it runs on an iPhone X.</p>
 <span class="more">Read</span>
 </a>
 <a class="card" href="compatibility.html">
 <h3>Will it work on my phone?</h3>
-<p>Compatibility by chip family instead of a list of every model. Short version: Snapdragon with UFS storage has a chance, MediaTek mostly doesn't.</p>
+<p>Compatibility by chip family instead of a list of every model. Short version: Snapdragon has a good chance, MediaTek mostly doesn't.</p>
 <span class="more">Check</span>
 </a>
 <a class="card" href="porting.html">
 <h3>Port it to your phone</h3>
-<p>The three places in the code that describe the hardware, where to find the right values for your phone, and what a first boot looks like.</p>
+<p>What has to happen for iOS to run on your phone, step by step, from the first boot to touch and beyond, and what usually goes wrong.</p>
 <span class="more">Start</span>
 </a>
 <a class="card" href="future.html">
-<h3>Future plans</h3>
-<p>Wi-Fi, Bluetooth and the big question everybody asks: can the GPU ever work?</p>
+<h3>Open problems</h3>
+<p>What no project has solved yet, and where help is most useful: complete Metal, Bluetooth, calls, and more devices.</p>
 <span class="more">See</span>
 </a>
 </div>
 
-<h2 id="have-a-redmi-note-10-pro">Have a Redmi Note 10 Pro?</h2>
-<p>Then you don't need to port anything. The full build and install steps are in the <a href="https://github.com/dipa-studio/ios-sweet#how-to-do-it-yourself">README on GitHub</a>. You need an unlocked bootloader, a Linux PC and a GitHub account (the kernel builds on GitHub's free macOS runners).</p>
 <p>Questions, ports and progress reports go to <a href="https://www.reddit.com/r/hackios/">r/hackios</a>.</p>
-<footer>hackiosx.dev documents the open-source <a href="https://github.com/dipa-studio/ios-sweet">ios-sweet</a> project. It is not affiliated with Apple. iOS is Apple's software and is not distributed here.</footer>
+<footer>hackiosx.dev documents open-source projects that run iOS on Android phones. It is not affiliated with Apple. iOS is Apple's software and is not distributed here.</footer>
 </div></main>
-<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a4da96b0df4ac306',t:'MTc5MjUyNjIxNQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</body>
 </html>

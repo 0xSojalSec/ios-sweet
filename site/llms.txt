@@ -1,22 +1,18 @@
 # hackiosx.dev
 
-> Documentation for ios-sweet, an open-source project that boots Apple's real iOS 16.7.16 (the iPhone X userland) on a Redmi Note 10 Pro (Qualcomm Snapdragon 732G, codename sweet). It uses Apple's open-source XNU kernel (xnu-8796) with patches and new drivers for the phone's hardware. It is not an emulator or a launcher theme. Source: https://github.com/dipa-studio/ios-sweet
+> Documentation for the open-source projects that boot Apple's real iOS and iPadOS on Android phones and tablets, using Apple's open-source XNU kernel (xnu-8796; xnu-10063 for iPadOS 17 on UniXNU) with new drivers for the phone's hardware. Not an emulator or a launcher theme. Community: https://www.reddit.com/r/hackios/
 
-Current state: boots to the iOS lock screen and home screen; touch, gesture navigation, buttons, Settings, Control Center and all 8 CPU cores work. No Wi-Fi, Bluetooth, cellular, audio, camera or GPU (the CPU renders everything). Only the Redmi Note 10 Pro runs it today; other Snapdragon phones with UFS storage can be ported.
+Projects:
+- HackiOS (OOSEX GANG): POCO X5 Pro 5G (Snapdragon 778G), iOS 16.5. Boots via fastboot boot of a Mu-Silicium UEFI and an EFI loader, runs from RAM. GPU (Adreno via Mesa/freedreno, OpenGL ES), Wi-Fi (ath11k via LinuxKPI), sound and camera work; also runs in QEMU. Source: https://github.com/oosexgang/hackios-xnu-kernel and https://github.com/oosexgang/hackios-xnu-userland
+- ios-sweet: Redmi Note 10 Pro (Snapdragon 732G), iOS 16.7.16. Boots via fastboot boot of a small shim, installs into userdata. Home screen, touch, buttons, 8 cores; CPU rendering, no Wi-Fi. Source: https://github.com/dipa-studio/ios-sweet
+- UniXNU: Xiaomi Pad 6S Pro (Snapdragon 8 Gen 2), iPadOS 17 from the 2017 iPad Pro firmware. UEFI boot, 4 KB page XNU, native kernel driver for the Adreno 740, Metal via metal2vulkan and Turnip. Source: https://github.com/UniXNU/UniXNU, docs https://unixnu.com
+- Community ports (mostly based on ios-sweet): Pixel 2016 (https://github.com/joranv1/ios-sailfish, Snapdragon 821, iPhone 8 firmware, GPU via Mesa, Wi-Fi, charging), Pixel 4 (https://github.com/NWylynko/ios-flame, Metal via Vulkan, Wi-Fi), Pixel 6a (https://github.com/PixOS-Project/pixelios-kernel, Tensor G1), Redmi Note 12 4G (https://github.com/MakrSas/ios-topaz, 8 cores on a 4 KB-page kernel, GPU, Wi-Fi, sound, charging), POCO M8 5G (https://github.com/mkukarin01/ios-topaz-experiments/tree/kunzite), LG V60 (https://github.com/ch1tmdgus/ios-v60), Galaxy S7 Exynos 8890 (https://github.com/wardevsa/ios-a5xelte/tree/herolte)
 
 ## Docs
 
-- [Home](https://hackiosx.dev/): what works, what is missing
-- [How it works](https://hackiosx.dev/how-it-works): boot chain (Xiaomi bootloader, shim, XNU, Apple Device Tree), where the drivers come from, why an iPhone X, software rendering, what is faked
-- [Compatibility](https://hackiosx.dev/compatibility): which phones could run it, grouped by chip family (Snapdragon, Tensor, MediaTek, Exynos)
-- [Port it to your phone](https://hackiosx.dev/porting): the hardware-specific files (tools/mkadt.py, shim/, board driver patches in xnu/patches/), where to find the values in the phone's device tree, first-boot stages
-- [Future plans](https://hackiosx.dev/future): Wi-Fi, Bluetooth, possible GPU acceleration
-
-## Source
-
-- [GitHub repository](https://github.com/dipa-studio/ios-sweet): README with full build and install steps for the Redmi Note 10 Pro
-- [Kernel patches](https://github.com/dipa-studio/ios-sweet/tree/main/xnu/patches)
-
-## Community
-
-- [r/hackios](https://www.reddit.com/r/hackios/): ports, questions and progress reports
+- [Home](https://hackiosx.dev/): overview of the projects
+- [Projects](https://hackiosx.dev/projects): what works and what is missing in HackiOS, ios-sweet and UniXNU, and a table of community ports
+- [How it works](https://hackiosx.dev/how-it-works): boot chains (shim vs UEFI loader), where the drivers come from, why an iPhone X, the screen and GPU, what is faked
+- [Compatibility](https://hackiosx.dev/compatibility): which phones could run it, grouped by chip family, and which project to start from
+- [Port it to your phone](https://hackiosx.dev/porting): conceptual porting guide in milestones (run your own code, screen and log, hardware description for XNU, CPU cores and 16 KB pages, storage and the iOS system, lock screen, touch and buttons, borrowing GPU/Wi-Fi/sound work from other ports), where the pieces live in ios-sweet, HackiOS and UniXNU, tips
+- [Open problems](https://hackiosx.dev/future): what no project has solved yet (complete Metal, Bluetooth, calls and Apple services) and hardware that works on only one or two devices

@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projects | hackiosx</title>
+<meta name="description" content="The open-source projects that run iOS 16 on Android phones: HackiOS, ios-sweet and community ports, compared.">
+<meta name="theme-color" content="#212121">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=4">
+</head>
+<body>
+<header class="appbar">
+<button class="menu-btn" aria-label="Menu" onclick="document.body.classList.toggle('nav-open')"><svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg></button>
+<a class="brand" href="index.html">hackios<b>x</b></a>
+<span class="spacer"></span>
+<a class="ext hide-sm" href="projects.html">Projects</a>
+<a class="ext" href="https://www.reddit.com/r/hackios/">r/hackios</a>
+</header>
+<nav class="drawer">
+<div class="head">hackios<b style="color:var(--accent);font-weight:500">x</b></div>
+<div class="sub">Docs</div>
+<a href="index.html">Home</a>
+<a href="projects.html" class="active">Projects</a>
+<a href="how-it-works.html">How it works</a>
+<a href="compatibility.html">Compatibility</a>
+<a href="porting.html">Port it to your phone</a>
+<a href="future.html">Open problems</a>
+<hr>
+<div class="sub">Source</div>
+<a href="https://github.com/oosexgang/hackios-xnu-kernel">HackiOS (POCO X5 Pro)</a>
+<a href="https://github.com/dipa-studio/ios-sweet">ios-sweet (Redmi Note 10 Pro)</a>
+<a href="https://github.com/UniXNU/UniXNU">UniXNU (Xiaomi Pad 6S Pro)</a>
+<a href="projects.html#community-ports">Community ports</a>
+<hr>
+<a href="https://www.reddit.com/r/hackios/">r/hackios</a>
+</nav>
+<div class="scrim" onclick="document.body.classList.remove('nav-open')"></div>
+<main><div class="page">
+<h1>Projects</h1>
+<p class="lead">Each project targets one device first, but all of them are written to be ported. Here is what each one runs on, what works, and where to find the source.</p>
+
+<h2 id="hackios">HackiOS</h2>
+<p>By the OOSEX GANG team, open-sourced in October 2026 in two repositories: the kernel side (XNU changes, the EFI loader, the UEFI port, Wi-Fi) and the userland side (the system image builder, their init, the GPU and audio pieces).</p>
+<h3>Works</h3>
+<ul>
+<li>Lock screen, home screen, gestures, Control Center, widgets</li>
+<li>Settings, Clock, Calendar, Photos, Notes, Safari and more</li>
+<li>Touchscreen with multitouch, power and volume keys</li>
+<li>All 8 cores; about 20 seconds to the lock screen</li>
+<li>Adreno 642L GPU drawing the interface</li>
+<li>Wi-Fi: join a network in Settings, browse in Safari</li>
+<li>Speakers, microphone, front and rear camera in Camera.app</li>
+<li>Sileo and Procursus (apt, tweaks, SSH)</li>
+</ul>
+<h3>Missing</h3>
+<ul>
+<li>Cellular and Bluetooth</li>
+<li>Charging while iOS runs (the battery only drains)</li>
+<li>Metal for apps (Apple's system shaders are being brought up one by one)</li>
+<li>App Store downloads and Apple ID sign-in</li>
+<li>Video recording</li>
+</ul>
+<p>It's set up as a research bench: each session runs for a set time, then the kernel hands its log back to the loader. Start with the <a href="https://github.com/oosexgang/hackios-xnu-kernel">kernel repository's README</a>.</p>
+
+<h2 id="ios-sweet">ios-sweet</h2>
+<p>A port of XNU to the Redmi Note 10 Pro with its own boot shim and drivers.</p>
+<h3>Works</h3>
+<ul>
+<li>Lock screen and home screen (about 4 minutes on the Apple logo)</li>
+<li>Touchscreen, swipe-up to go home, app switcher</li>
+<li>Power and volume buttons, screen lock and wake</li>
+<li>Settings, Control Center, notification center</li>
+<li>The App Store opens (installing apps is untested, since there is no internet yet)</li>
+<li>All 8 CPU cores, read/write storage</li>
+</ul>
+<h3>Missing</h3>
+<ul>
+<li>Wi-Fi, Bluetooth, mobile network</li>
+<li>Audio, camera, sensors, GPS, Face ID</li>
+<li>GPU: the CPU draws everything</li>
+<li>Real battery level (it always shows 100 %)</li>
+</ul>
+<p>Build and install steps are in the <a href="https://github.com/dipa-studio/ios-sweet#how-to-do-it-yourself">README</a>.</p>
+
+<h2 id="unixnu">UniXNU</h2>
+<p>An independent project that runs iPadOS 17 on the Xiaomi Pad 6S Pro (<code>sheng</code>, Snapdragon 8 Gen 2), using the iPadOS firmware of the 2017 iPad Pro. Like HackiOS it boots through a ported Mu-Silicium UEFI, with its own UEFI boot manager and loader (DarwinBoot). The kernel is patched to run with 4 KB memory pages, and the drivers are split into separate repositories under the <a href="https://github.com/UniXNU">UniXNU</a> organization.</p>
+<h3>Works</h3>
+<ul>
+<li>iPadOS home screen and Settings</li>
+<li>GPU: a native kernel driver for the Adreno 740, with Metal translated to Vulkan for Mesa's Turnip driver; the system interface is composited on the GPU</li>
+<li>Touchscreen, display, UFS storage</li>
+</ul>
+<h3>Missing</h3>
+<ul>
+<li>Wi-Fi, Bluetooth, USB, audio, camera, sensors</li>
+<li>Battery driver, sleep and wake</li>
+</ul>
+<p>Documentation, including a porting guide, is at <a href="https://unixnu.com">unixnu.com</a>. Source: <a href="https://github.com/UniXNU/UniXNU">UniXNU</a> and the <a href="https://github.com/UniXNU/UniXNU-sheng">sheng device repository</a>.</p>
+
+<h2 id="community-ports">Community ports</h2>
+<div class="table-wrap"><table>
+<tr><th>Phone</th><th>Chip</th><th>Based on</th><th>State</th></tr>
+<tr><td><a href="https://github.com/MakrSas/ios-topaz">Redmi Note 12 4G</a></td><td>Snapdragon 685</td><td>ios-sweet, with GPU, sound and Wi-Fi glue code from HackiOS (its Wi-Fi driver is its own)</td><td>Home screen with touch and buttons, all 8 cores, Wi-Fi with Safari, Adreno 610 GPU through Mesa, sound, charging</td></tr>
+<tr><td><a href="https://github.com/ch1tmdgus/ios-v60">LG V60 ThinQ 5G</a></td><td>Snapdragon 865</td><td>ios-sweet</td><td>iOS interface with working touch and buttons</td></tr>
+<tr><td><a href="https://github.com/joranv1/ios-sailfish">Google Pixel (2016)</a></td><td>Snapdragon 821</td><td>ios-sweet, iPhone 8 firmware</td><td>All stock apps, GPU drawing through Mesa on the Adreno 530, Wi-Fi in Settings with Safari, real battery and charging, about 20 seconds to the lock screen, on 2 GB of RAM</td></tr>
+<tr><td><a href="https://github.com/NWylynko/ios-flame">Google Pixel 4</a></td><td>Snapdragon 855</td><td>ios-sweet</td><td>Home screen and stock apps drawn with Metal on the Adreno 640 (through Mesa's Vulkan driver), Wi-Fi in Settings, Safari, SSH over USB</td></tr>
+<tr><td><a href="https://github.com/PixOS-Project/pixelios-kernel">Google Pixel 6a</a> (PixeliOS)</td><td>Tensor G1</td><td>ios-sweet</td><td>Lock screen and home screen, touch, all 8 cores (button driver not tested yet)</td></tr>
+<tr><td><a href="https://github.com/mkukarin01/ios-topaz-experiments/tree/kunzite">POCO M8 5G</a></td><td>Snapdragon 6 Gen 3</td><td>Redmi Note 12 port</td><td>SpringBoard runs, USB networking and live log; GPU work in progress</td></tr>
+<tr><td><a href="https://github.com/wardevsa/ios-a5xelte/tree/herolte">Samsung Galaxy S7</a> (SM-G930F)</td><td>Exynos 8890</td><td>ios-sweet (through a Galaxy A5 2016 fork)</td><td>iOS setup screen with touch and all four buttons; CPU rendering, very slow</td></tr>
+</table></div>
+<p>Got a port working? Post it on <a href="https://www.reddit.com/r/hackios/">r/hackios</a> and it can be added here.</p>
+<footer>hackiosx.dev documents open-source projects that run iOS on Android phones. It is not affiliated with Apple. iOS is Apple's software and is not distributed here.</footer>
+</div></main>
+</body>
+</html>

@@ -4,109 +4,182 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Port it to your phone | hackiosx</title>
-<meta name="description" content="The hardware-specific parts of ios-sweet, where to find your phone&#x27;s values, and how to test a port.">
+<meta name="description" content="What has to happen for iOS to run on your phone, step by step: booting your own code, the screen and log, the hardware description, cores, storage, the lock screen, touch and beyond.">
 <meta name="theme-color" content="#212121">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&family=Roboto+Mono&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 <header class="appbar">
 <button class="menu-btn" aria-label="Menu" onclick="document.body.classList.toggle('nav-open')"><svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg></button>
 <a class="brand" href="index.html">hackios<b>x</b></a>
 <span class="spacer"></span>
-<a class="ext hide-sm" href="https://www.reddit.com/r/hackios/">r/hackios</a>
-<a class="ext" href="https://github.com/dipa-studio/ios-sweet">GitHub</a>
+<a class="ext hide-sm" href="projects.html">Projects</a>
+<a class="ext" href="https://www.reddit.com/r/hackios/">r/hackios</a>
 </header>
 <nav class="drawer">
 <div class="head">hackios<b style="color:var(--accent);font-weight:500">x</b></div>
 <div class="sub">Docs</div>
 <a href="index.html">Home</a>
+<a href="projects.html">Projects</a>
 <a href="how-it-works.html">How it works</a>
 <a href="compatibility.html">Compatibility</a>
 <a href="porting.html" class="active">Port it to your phone</a>
-<a href="future.html">Future plans</a>
+<a href="future.html">Open problems</a>
 <hr>
-<div class="sub">Links</div>
-<a href="https://github.com/dipa-studio/ios-sweet">Source on GitHub</a>
-<a href="https://github.com/MakrSas/ios-topaz">Redmi Note 12 port</a>
-<a href="https://github.com/ch1tmdgus/ios-v60">LG V60 port</a>
+<div class="sub">Source</div>
+<a href="https://github.com/oosexgang/hackios-xnu-kernel">HackiOS (POCO X5 Pro)</a>
+<a href="https://github.com/dipa-studio/ios-sweet">ios-sweet (Redmi Note 10 Pro)</a>
+<a href="https://github.com/UniXNU/UniXNU">UniXNU (Xiaomi Pad 6S Pro)</a>
+<a href="projects.html#community-ports">Community ports</a>
+<hr>
 <a href="https://www.reddit.com/r/hackios/">r/hackios</a>
 </nav>
 <div class="scrim" onclick="document.body.classList.remove('nav-open')"></div>
 <main><div class="page">
 <h1>Port it to your phone</h1>
-<p class="lead">On a Snapdragon phone, almost everything that is specific to the Redmi Note 10 Pro sits in three places: the device tree generator, the boot shim, and the board drivers in the kernel patches. This page walks through all three and shows where to look up your phone's values.</p>
+<p class="lead">This page explains what has to happen for iOS to run on a phone it was never made for, step by step, and what usually goes wrong at each step. It doesn't give you commands to paste. Every phone is different, and the commands are in each project's README anyway. What carries over from phone to phone is knowing what each step needs, so that's what this page covers.</p>
 
 <div class="warn">
-<p><strong>Before you touch anything, back up your phone.</strong> Boot a recovery such as OrangeFox or TWRP and pull at least <code>persist</code>, <code>modemst1</code>, <code>modemst2</code>, <code>fsg</code>, <code>fsc</code>, <code>boot</code>, <code>dtbo</code> and <code>vbmeta</code>. Some of these hold calibration data that is unique to your phone and can't be downloaded anywhere. Keep them out of git.</p>
+<p><strong>Use a spare phone and back it up first.</strong> Before anything else, boot a recovery and save the partitions that hold data unique to your phone: <code>persist</code>, the modem partitions (<code>modemst1</code>, <code>modemst2</code>, <code>fsg</code>, <code>fsc</code>), and <code>boot</code>, <code>dtbo</code> and <code>vbmeta</code>. Some of them hold calibration data that can't be downloaded anywhere. Most ports also erase Android's user data once you install the iOS system.</p>
 </div>
 
-<p>Check the <a href="compatibility.html">compatibility page</a> first. This guide assumes a Snapdragon chip with UFS storage and a bootloader that supports <code>fastboot boot</code>.</p>
-
-<h2 id="step-0-get-your-phone-s-hardware-map">Step 0: get your phone's hardware map</h2>
-<p>Everything you need to know about the hardware is already on the phone, in the device tree Android booted with. Boot a recovery with adb (or use a rooted Android) and copy it to the PC:</p>
-<pre><code>adb shell cat /sys/firmware/fdt &gt; live.dtb
-adb shell cat /proc/iomem &gt; iomem.txt
-dtc -I dtb -O dts -o live.dts live.dtb      # dtc is in the device-tree-compiler package</code></pre>
-<p><code>live.dts</code> is a big text file. Every value below comes from searching it. You'll also want your phone's kernel source (Xiaomi, OnePlus and others publish it on GitHub) for anything the device tree doesn't spell out, like the touch controller's protocol.</p>
-<p>Also unpack your stock <code>boot.img</code>, because the shim reuses its DTB:</p>
-<pre><code>python3 tools/unpack_bootv2.py backup/boot.img dtb/boot_unpacked</code></pre>
-
-<h2 id="1-the-device-tree-generator-tools-mkadt-py">1. The device tree generator: <code>tools/mkadt.py</code></h2>
-<p>XNU learns about the hardware from an Apple Device Tree. <code>mkadt.py</code> writes one from the constants at the top of the file. These are the ones to change:</p>
-<div class="table-wrap"><table>
-<tr><th>Constant</th><th>What it is</th><th>Where to find it in live.dts</th></tr>
-<tr><td><code>HIGH_PHYS_BASE</code>, <code>HIGH_MEM_SIZE</code></td><td>The RAM the kernel may use</td><td>The <code>memory</code> node, plus every entry under <code>reserved-memory</code>. Pick a range with no carve-outs in it. On sweet that's the whole bank above 4 GB.</td></tr>
-<tr><td><code>GICD</code>, <code>GICR</code></td><td>Interrupt controller</td><td><code>interrupt-controller@...</code> with <code>compatible = "arm,gic-v3"</code>. The first two <code>reg</code> entries.</td></tr>
-<tr><td><code>FB</code>, <code>FB_SIZE</code></td><td>The screen buffer the bootloader leaves on</td><td><code>cont_splash_region</code> (sometimes <code>splash_region</code>) under <code>reserved-memory</code></td></tr>
-<tr><td><code>FB_W</code>, <code>FB_H</code>, <code>FB_STRIDE</code></td><td>Panel resolution and bytes per line</td><td>The panel node (<code>qcom,mdss_dsi_...</code>), <code>qcom,mdss-dsi-panel-width</code> and <code>-height</code>. Stride is usually width x 4.</td></tr>
-<tr><td><code>UFS</code>, <code>UFS_SIZE</code></td><td>The storage controller</td><td><code>ufshc@...</code>, the <code>reg</code> named <code>ufs_mem</code></td></tr>
-<tr><td><code>TIMEBASE</code>, <code>VTIMER_INTID</code></td><td>System timer</td><td>The <code>timer</code> node with <code>arm,armv8-timer</code>. The frequency is almost always 19.2 MHz on Snapdragon. The virtual timer is the third interrupt; a PPI number <em>n</em> becomes INTID 16 + <em>n</em>.</td></tr>
-<tr><td>CPU nodes</td><td>How many cores, and their hardware IDs</td><td>The <code>cpus</code> node: each core's <code>reg</code> (its MPIDR). sweet has 8 cores at <code>0x000</code> to <code>0x700</code>; the loop in <code>mkadt.py</code> builds them as <code>core &lt;&lt; 8</code>.</td></tr>
-</table></div>
-
-<h2 id="2-the-boot-shim-shim">2. The boot shim: <code>shim/</code></h2>
-<p>The shim is the small program the bootloader starts. It has its own copy of a few addresses, because it runs before any device tree is read:</p>
+<h2 id="before-you-start">Before you start</h2>
+<p>You need four things:</p>
 <ul>
-<li><code>shim/console.h</code> and <code>shim/mmu.h</code>: the framebuffer address (<code>FB_BASE</code>, <code>FB_PHYS</code>).</li>
-<li><code>shim/shim.c</code>: <code>GICD_BASE</code>, <code>GICR_BASE</code>, the timer interrupts, <code>PSHOLD</code> (the reset register) and <code>IMEM_RESTART_REASON</code> (used to reboot into fastboot). Search live.dts for <code>restart@</code> / <code>qcom,pshold</code> and <code>restart_reason</code>.</li>
-<li><code>shim/build.sh</code>: the <code>mkbootimg</code> offsets and header version. Copy them from your stock boot.img: the unpack script prints its header with the load addresses and page size.</li>
+<li><strong>A way to run your own code.</strong> An unlocked bootloader that can start an image from the PC (<code>fastboot boot</code>), or on Samsung phones, a BOOT partition you can flash. See <a href="compatibility.html">Compatibility</a>.</li>
+<li><strong>Your phone's hardware description.</strong> The device tree Android booted with (it lives at <code>/sys/firmware/fdt</code> on a running phone or recovery) and the phone maker's Linux kernel source. Between them they list every address, interrupt and chip on the board, and show how each chip is driven.</li>
+<li><strong>A base project.</strong> Start from whichever project or port runs on the chip closest to yours. A port on the same chip family saves weeks. See <a href="compatibility.html#which-project">which project to start from</a> and the <a href="projects.html#community-ports">community ports</a>.</li>
+<li><strong>A way to see what happened.</strong> At first that's the screen. Plan early for a way to get the kernel log off the phone (more in step 2).</li>
 </ul>
-<p>Two kernel patches also draw on the screen very early, before the device tree is parsed: <code>0010-sweet-early-framebuffer-debug</code> and <code>0012-sweet-keep-debug-console-after-ttbr0</code>. They hard-code the framebuffer address and the 1080 x 2400 size. Change those too, or the early boot messages will land in the wrong place.</p>
 
-<h2 id="3-the-board-drivers-xnu-patches">3. The board drivers: <code>xnu/patches/</code></h2>
-<p>The kernel is Apple's source plus a numbered series of patches that GitHub Actions applies in order. Most patches are generic. These are the ones that know about the board:</p>
+<h2 id="what-a-port-is">What a port actually changes</h2>
+<p>Most of the work in these projects is generic: making XNU build, the file systems, Apple's missing drivers, the security stand-ins, the workarounds that keep iOS happy. That part carries over unchanged. The Pixel 6a port counted it for ios-sweet: of its 81 original kernel patches, about 66 don't care what phone they run on, about 10 only need new addresses, and only 5 are drivers for Qualcomm hardware.</p>
+<p>A port replaces the device-specific layer: how the phone boots your code, where its memory and devices are, and drivers for the chips on your board. It helps a lot that the bootloader leaves some hardware running when it hands over: the screen keeps showing its image buffer, the storage link is often still up, and the USB controller is often still powered. A port leans on that at first and replaces it with real drivers later.</p>
+<p>The steps below are in the order a port usually comes alive. Get each one working before moving on, because a problem in an early step looks like a mystery in a later one.</p>
+
+<h2 id="step-1">1. Get your own code running</h2>
+<p>The bootloader has to accept an image you built. On Qualcomm phones that's an Android boot image whose "kernel" is really the project's shim (ios-sweet and its ports) or a UEFI firmware (HackiOS, UniXNU). Bootloaders are picky, and this is where many ports lose their first day:</p>
+<ul>
+<li>Boot image versions differ. Some bootloaders only accept the newer layout (v4, with a separate <code>vendor_boot</code>) and silently drop parts of an older one. The Redmi Note 12 port had to hide its payload inside the kernel image because its bootloader threw away the ramdisk.</li>
+<li>Some bootloaders want the kernel compressed or signed in a particular way. The Pixel 4 needs an LZ4-compressed kernel with a verification footer, or it refuses the image.</li>
+<li>Some phones arrive in your code with a hardware watchdog still running, which resets the phone after a few seconds unless you stop it, or at a higher privilege level than XNU expects (the Pixel 6a starts the shim at EL2).</li>
+<li>Samsung phones have no <code>fastboot boot</code>. The Galaxy S7 port flashes its loader to the BOOT partition and lets Samsung's bootloader start it.</li>
+</ul>
+<p>Before the first try, find out how to force your phone back into the bootloader (on most phones, hold Power and Volume down). Your code will hang a lot, and with <code>fastboot boot</code> a forced reboot always brings you back to a working phone.</p>
+<div class="note"><p><strong>It works when</strong> your code visibly does something: a color on the screen, text, or a reboot to the bootloader on purpose.</p></div>
+
+<h2 id="step-2">2. A picture and a log</h2>
+<p>Until you have drivers, the screen is your debugger. The bootloader leaves the display running and showing an image buffer in memory. Your device tree names it (look for a reserved memory region called something like <code>cont_splash</code> or <code>splash</code>), along with the panel's width and height. Write pixels there and they show up.</p>
+<p>One catch: panels come in two kinds. Video-mode panels keep reading the buffer by themselves, so anything you write appears. Command-mode panels (the Pixel 4 and Pixel 6a have them) only update when told to, so you have to poke the display controller to refresh. Without that the screen stays frozen on the bootloader's logo.</p>
+<p>Next, get the log off the phone, because filming the screen gets old fast. Projects have done it by keeping the log in a reserved piece of RAM or at the end of the storage partition and reading it from recovery, by streaming it over USB as a network connection, by sending it back to their own loader (HackiOS), and even as QR codes on the screen (Pixel 6a).</p>
+<div class="note"><p><strong>It works when</strong> you can read the shim's or loader's messages, ideally on your PC.</p></div>
+
+<h2 id="step-3">3. Describe the hardware to XNU</h2>
+<p>XNU learns about the machine from an Apple Device Tree, and the projects generate one from your phone's device tree. These are the values that matter for a first boot:</p>
+<ul>
+<li><strong>Memory.</strong> The RAM range XNU may use. Qualcomm and other chip makers reserve pieces of RAM for the modem, the security firmware and so on. Your range has to avoid all of them. If it doesn't, the phone usually just resets instantly when the kernel touches protected memory. Look at the <code>memory</code> node and every entry under <code>reserved-memory</code>; a large bank with no reservations in it is the easiest choice.</li>
+<li><strong>Interrupt controller.</strong> The addresses of the GICv3, which most recent Android chips use (some older chips have the older GICv2, which needs other code). If interrupts don't arrive, the kernel hangs right after its early messages. Look for the node whose <code>compatible</code> says <code>arm,gic-v3</code>.</li>
+<li><strong>Timer.</strong> Its frequency (19.2 MHz on Qualcomm, different on Tensor and Exynos) and which interrupt it uses. A wrong timer interrupt also looks like a hang. Look for the <code>arm,armv8-timer</code> node.</li>
+<li><strong>CPU cores.</strong> Each core's hardware ID (its <code>reg</code> value under <code>cpus</code>), so the kernel can start them later.</li>
+<li><strong>Storage controller.</strong> Where the UFS (or eMMC) controller sits, usually a node named <code>ufshc</code>.</li>
+</ul>
+<div class="note"><p><strong>It works when</strong> the kernel's messages scroll past and it stops at "waiting for root device" or similar. That means memory, interrupts and the timer are right.</p></div>
+
+<h2 id="step-4">4. The CPU cores</h2>
+<p>Start with one core and add the rest later. Two things about your CPU can bite:</p>
+<ul>
+<li><strong>16 KB pages.</strong> iOS uses 16 KB memory pages everywhere. Some small CPU cores, especially older or budget ones, can't use them. Either leave those cores idle, or build a kernel that uses 4 KB pages, which is what UniXNU and the Redmi Note 12 port did.</li>
+<li><strong>Older instruction sets.</strong> The iPhone X's chip understands newer instructions (ARMv8.2) than some Android chips (ARMv8.0). The kernel then has to be built for the older cores, and the few newer instructions that still show up in iOS have to be emulated by the kernel. The Redmi Note 12 port documents exactly how. The Pixel (2016) port reports that the iPhone 8 firmware it uses runs on its ARMv8.0 cores without that emulation.</li>
+</ul>
+<p>Once one core is stable, the others start through PSCI, the standard firmware call for turning cores on. Some chips need extra steps there, like preparing the interrupt controller for each core first.</p>
+
+<h2 id="step-5">5. Storage and the iOS system</h2>
+<p>iOS needs its system volume. The usual route is to build it on your PC from Apple's iPhone X or iPhone 8 firmware file, which the projects download straight from Apple, and write it into the phone's <code>userdata</code> partition. The projects never include Apple's files themselves.</p>
+<p>Then the kernel needs a storage driver to read it:</p>
+<ul>
+<li>On ios-sweet's phone the bootloader leaves the UFS link up, so the driver mostly just sends commands. Other bootloaders shut the controller down before handing over, and then the driver has to bring it up from cold. The Pixel 6a port had to do that.</li>
+<li>UFS controllers on Exynos and Tensor differ from Qualcomm's, so those ports need their own variant.</li>
+<li>eMMC needs a different driver altogether.</li>
+<li>HackiOS can skip all of this for a first boot by loading the whole system into RAM over USB.</li>
+</ul>
+<div class="note"><p><strong>It works when</strong> launchd, the first iOS process, starts and the Apple logo appears.</p></div>
+
+<h2 id="step-6">6. The lock screen</h2>
+<p>With a framebuffer, a CPU and storage, iOS can already reach the lock screen, but expect a few rounds of fixes first:</p>
+<ul>
+<li><strong>Identity.</strong> iOS has to be told which iPhone it is (or which iPad, for iPadOS), and that has to match the firmware you installed, or it picks the wrong layout and features.</li>
+<li><strong>Screen size.</strong> iOS only lays itself out on screen sizes it knows. Tell it it has the real iPhone's panel and fit that onto yours.</li>
+<li><strong>Daemons that crash without hardware.</strong> The modem, Bluetooth and similar daemons crash or restart forever when their chip isn't there. The projects disable the worst ones.</li>
+<li><strong>Slow first boot.</strong> The first boot takes several minutes while iOS sets itself up. Later boots are much faster.</li>
+</ul>
+<p>Most of these fixes are already in your base project, so this step is usually short. Read its notes when something crashes; it has probably met the same crash.</p>
+
+<h2 id="step-7">7. Touch and buttons</h2>
+<p>Now the phone has to listen. Find your touchscreen's node in the device tree. It tells you the chip (Goodix, Focaltech, Novatek, Synaptics, ST and others), which bus it's on (I²C or SPI), its reset and interrupt pins, and which power rail it needs. The Linux driver for that chip in your phone's kernel source shows how to talk to it.</p>
+<p>The new driver reads finger positions and hands them to iOS as an Apple-style touch device. Watch out for two things:</p>
+<ul>
+<li>The touch chip is often unpowered until something turns its power rail on. On Qualcomm phones that means a request to the power controller (RPMh on newer chips, RPM on older ones).</li>
+<li>iOS's swipe-up-to-go-home gesture only works if touches that start at the screen edge are marked as edge touches.</li>
+</ul>
+<p>Buttons are simpler: power and volume usually sit on the power management chip or on plain GPIO pins, and become Apple-style key events.</p>
+<div class="note"><p><strong>It works when</strong> you can unlock the phone, open apps and swipe back home.</p></div>
+
+<h2 id="step-8">8. Everything else</h2>
+<p>From here on the phone works, and every new driver makes it nicer. You don't have to start from zero. Look for a project that already did the same thing on a related chip:</p>
 <div class="table-wrap"><table>
-<tr><th>Patch</th><th>What to check</th></tr>
-<tr><td><code>0060-sweet-keys-touch-drivers</code></td><td>Buttons: the PMIC bus (SPMI) addresses and the register offsets of the power key (PON) and volume keys. Touch: which I²C serial engine the touch chip hangs off, its I²C address, and its reset and interrupt GPIOs. Search live.dts for your touch chip's node (<code>goodix</code>, <code>focaltech</code>, <code>novatek</code>, <code>synaptics</code>, ...).</td></tr>
-<tr><td><code>0062-sweet-touch-power-battery</code></td><td>The power rail the touch chip needs (on sweet, regulator <code>ldoc11</code> voted through RPMh). Your phone's touch node names its supply, like <code>vdd-supply</code> or <code>avdd-name</code>.</td></tr>
-<tr><td><code>0063-sweet-goodix-geni-packing</code></td><td>The Goodix GT9896 touch protocol. A different touch chip needs a different protocol here. The Linux driver for your chip in the vendor kernel source shows the register layout.</td></tr>
-<tr><td><code>0061-sweet-iphone-x-display-size</code></td><td>Centers the real panel inside the 1125 x 2436 screen that iOS sees, and maps touch coordinates. Uses 1080 x 2400 in a few places.</td></tr>
-<tr><td><code>0072</code> to <code>0077</code> (USB)</td><td>Optional. The USB controller addresses for the live log over USB. You can skip these at first and read the log from recovery.</td></tr>
+<tr><th>Feature</th><th>Who has done it</th></tr>
+<tr><td>GPU with OpenGL ES (Mesa freedreno)</td><td>HackiOS (Adreno 642L), Redmi Note 12 port (Adreno 610), Pixel 2016 port (Adreno 530)</td></tr>
+<tr><td>GPU with Metal (translated to Vulkan)</td><td>Pixel 4 port (Adreno 640), UniXNU (Adreno 740, with a native kernel GPU driver)</td></tr>
+<tr><td>Wi-Fi</td><td>HackiOS (WCN6750), Pixel 2016 port (QCA6174), Pixel 4 port (WCN3990), Redmi Note 12 port</td></tr>
+<tr><td>Sound</td><td>HackiOS, Redmi Note 12 port</td></tr>
+<tr><td>Camera</td><td>HackiOS</td></tr>
+<tr><td>Battery level and charging</td><td>Pixel 2016 port, Redmi Note 12 port</td></tr>
+<tr><td>USB networking (live log, SSH)</td><td>ios-sweet, Pixel 4 port, POCO M8 port; HackiOS has SSH too</td></tr>
 </table></div>
-<p>The patches add new files to XNU, such as <code>bsd/dev/sweet_touch.c</code>. To change one, apply the series to an <code>xnu-8796</code> tree, edit the file, and regenerate that patch with <code>diff -u</code>. Before you spend a CI run, <code>tools/xnu-cc.py</code> can compile a single file locally using the commands from a previous CI log.</p>
+<p>Two things to know. GPU, Wi-Fi and audio need firmware files that belong to the phone maker. They're never in the repositories, and you copy them from your own phone's Android. And Adreno generations differ, so a GPU driver usually needs real work to move from one generation to the next.</p>
 
-<h2 id="4-boot-arguments">4. Boot arguments</h2>
-<p>The command line is baked into the payload by <code>tools/mkpayload.py</code> (see the README for the full line). For a first boot on a new phone, use <code>cpus=1</code>, and add <code>sweettouch=0 sweetkeys=0</code> until those drivers are adapted. Raise <code>cpus</code> once the kernel is stable.</p>
+<h2 id="where-things-live">Where these pieces live in each project</h2>
+<div class="table-wrap"><table>
+<tr><th>Piece</th><th>ios-sweet and its ports</th><th>HackiOS</th><th>UniXNU</th></tr>
+<tr><td>Boot</td><td>The shim (<code>shim/</code>), packed as an Android boot image</td><td>A Mu-Silicium UEFI port plus their loader (<code>uefi/</code>, <code>xnuloader/</code>)</td><td>A Mu-Silicium UEFI fork per device plus DarwinBoot</td></tr>
+<tr><td>Hardware description</td><td><code>tools/mkadt.py</code> (constants at the top), plus a few addresses in the shim</td><td>A device profile and a loader platform entry, drafted by their <code>new-device.sh</code> script from your device tree</td><td>The device repository's board file</td></tr>
+<tr><td>Board drivers</td><td>Kernel patches; in ios-sweet 0060 (keys, touch), 0062 (touch power, battery), 0063 (touch protocol), 0061 (screen size), plus the early screen address in 0010 and 0012, and USB in 0072 to 0077</td><td><code>redwood_*.c</code> in the kernel tree (touch, buttons, CPU speed, GPU, Wi-Fi, audio)</td><td>Separate driver repositories, one per driver</td></tr>
+<tr><td>Guide</td><td>The README and NOTES of ios-sweet and of the port closest to you</td><td><a href="https://github.com/oosexgang/hackios-xnu-kernel/blob/main/docs/PORTING.md">docs/PORTING.md</a></td><td><a href="https://unixnu.com/porting/">unixnu.com/porting</a></td></tr>
+</table></div>
 
-<h2 id="5-build-and-boot">5. Build and boot</h2>
-<p>From here the steps are the same as on sweet and are in the <a href="https://github.com/dipa-studio/ios-sweet#how-to-do-it-yourself">README</a>: build the kernel on GitHub Actions, build the iOS root image from the iPhone X IPSW, pack the boot image, flash the root to <code>userdata</code>, then <code>fastboot boot</code> the shim.</p>
-<p>Take it in stages. You can test the shim and kernel before you flash anything: boot the shim alone, and it prints its own diagnostics to the screen.</p>
-<ol>
-<li><strong>Shim text on screen.</strong> Your framebuffer address is right.</li>
-<li><strong>Kernel messages scroll.</strong> Memory, interrupts and timer are right. If the phone reboots instantly, the memory range probably overlaps a protected carve-out.</li>
-<li><strong>The UFS driver finds the disk.</strong> Then iOS starts from <code>userdata</code>. This is the point where you flash the root image.</li>
-<li><strong>Apple logo, then the lock screen</strong> (after several minutes). Touch and buttons come last.</li>
-</ol>
-<p>When something crashes, read the log from recovery with <code>tools/sweet-log-pull.sh</code>, and <code>tools/sweet-crash.py</code> turns crash reports into function names. <a href="https://github.com/dipa-studio/ios-sweet/blob/main/NOTES.md">NOTES.md</a> has every problem sweet ran into along the way, and most of them will show up on your phone too.</p>
+<h2 id="stuck">When it gets stuck</h2>
+<p>What you see usually points to one step:</p>
+<div class="table-wrap"><table>
+<tr><th>What you see</th><th>Likely cause</th></tr>
+<tr><td>The bootloader refuses the image</td><td>Wrong boot image version, compression or signature (<a href="#step-1">step 1</a>)</td></tr>
+<tr><td>Nothing changes on screen, or it stays on the bootloader's logo</td><td>Wrong framebuffer address, or a command-mode panel that needs a refresh (<a href="#step-2">step 2</a>)</td></tr>
+<tr><td>The phone reboots within seconds</td><td>A watchdog still running (<a href="#step-1">step 1</a>), or memory that overlaps a reserved region (<a href="#step-3">step 3</a>)</td></tr>
+<tr><td>Kernel text appears, then everything stops</td><td>Interrupt controller or timer values (<a href="#step-3">step 3</a>)</td></tr>
+<tr><td>It hangs when more cores start</td><td>Cores that can't use 16 KB pages, or the interrupt controller isn't prepared for them (<a href="#step-4">step 4</a>)</td></tr>
+<tr><td>Strange crashes in iOS processes on older chips</td><td>Newer instructions the cores don't have (<a href="#step-4">step 4</a>)</td></tr>
+<tr><td>Stuck waiting for the root device</td><td>The storage driver can't reach the controller, maybe because the bootloader shut it down (<a href="#step-5">step 5</a>)</td></tr>
+<tr><td>Apple logo for a very long time</td><td>Normal on the first boot; otherwise look for crashing daemons in the log (<a href="#step-6">step 6</a>)</td></tr>
+<tr><td>Lock screen, but touch does nothing</td><td>The touch chip's power rail, its pins or its protocol (<a href="#step-7">step 7</a>)</td></tr>
+<tr><td>You can unlock, but swiping up doesn't go home</td><td>Edge touches aren't marked as edge touches (<a href="#step-7">step 7</a>)</td></tr>
+</table></div>
 
-<div class="note">
-<p>Got further on your phone? Post it on <a href="https://www.reddit.com/r/hackios/">r/hackios</a>. Which chip, which step you reached, and what you had to change helps everyone after you.</p>
+<h2 id="tips">Tips from the ports so far</h2>
+<ul>
+<li><strong>One problem at a time.</strong> Change one thing per boot. When two things change and the phone hangs, you've learned nothing.</li>
+<li><strong>Trust only what you saw.</strong> "It's not in the log" doesn't mean it didn't happen. Logs get cut off, and a check that skips cases can look like a pass. HackiOS wrote down <a href="https://github.com/oosexgang/hackios-xnu-kernel/blob/main/docs/checks.md">eleven ways their own checks fooled them</a>.</li>
+<li><strong>Write everything down.</strong> Every port that got far keeps a log of every boot: what changed, what happened. It's how you, and the next person, find the pattern.</li>
+<li><strong>Read the closest port's history.</strong> Most walls you'll hit, someone has already hit on a similar chip.</li>
+<li><strong>If you use an AI coding agent</strong>, give it your device tree, the phone's kernel source and the closest working port, and let it work on one milestone at a time. Several of the ports here were built that way. Check its work on the real phone, not on its word.</li>
+</ul>
+
+<div class="note" id="share">
+<p>Got further on your phone? Post it on <a href="https://www.reddit.com/r/hackios/">r/hackios</a> with the chip, the step you reached and what you had to change. It helps everyone after you, and working ports get added to <a href="projects.html#community-ports">the list</a>.</p>
 </div>
-<footer>hackiosx.dev documents the open-source <a href="https://github.com/dipa-studio/ios-sweet">ios-sweet</a> project. It is not affiliated with Apple. iOS is Apple's software and is not distributed here.</footer>
+<footer>hackiosx.dev documents open-source projects that run iOS on Android phones. It is not affiliated with Apple. iOS is Apple's software and is not distributed here.</footer>
 </div></main>
-<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a4da96b60d3fc2af',t:'MTc5MjUyNjIxNg=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</body>
 </html>

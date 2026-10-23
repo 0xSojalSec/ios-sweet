@@ -4,78 +4,93 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>How it works | hackiosx</title>
-<meta name="description" content="How ios-sweet boots Apple&#x27;s iOS kernel on a Snapdragon phone, written for people who are not kernel developers.">
+<meta name="description" content="How Apple&#x27;s iOS kernel ends up running on a Snapdragon phone, written for people who are not kernel developers.">
 <meta name="theme-color" content="#212121">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&family=Roboto+Mono&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=3">
+<link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
 <header class="appbar">
 <button class="menu-btn" aria-label="Menu" onclick="document.body.classList.toggle('nav-open')"><svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg></button>
 <a class="brand" href="index.html">hackios<b>x</b></a>
 <span class="spacer"></span>
-<a class="ext hide-sm" href="https://www.reddit.com/r/hackios/">r/hackios</a>
-<a class="ext" href="https://github.com/dipa-studio/ios-sweet">GitHub</a>
+<a class="ext hide-sm" href="projects.html">Projects</a>
+<a class="ext" href="https://www.reddit.com/r/hackios/">r/hackios</a>
 </header>
 <nav class="drawer">
 <div class="head">hackios<b style="color:var(--accent);font-weight:500">x</b></div>
 <div class="sub">Docs</div>
 <a href="index.html">Home</a>
+<a href="projects.html">Projects</a>
 <a href="how-it-works.html" class="active">How it works</a>
 <a href="compatibility.html">Compatibility</a>
 <a href="porting.html">Port it to your phone</a>
-<a href="future.html">Future plans</a>
+<a href="future.html">Open problems</a>
 <hr>
-<div class="sub">Links</div>
-<a href="https://github.com/dipa-studio/ios-sweet">Source on GitHub</a>
-<a href="https://github.com/MakrSas/ios-topaz">Redmi Note 12 port</a>
-<a href="https://github.com/ch1tmdgus/ios-v60">LG V60 port</a>
+<div class="sub">Source</div>
+<a href="https://github.com/oosexgang/hackios-xnu-kernel">HackiOS (POCO X5 Pro)</a>
+<a href="https://github.com/dipa-studio/ios-sweet">ios-sweet (Redmi Note 10 Pro)</a>
+<a href="https://github.com/UniXNU/UniXNU">UniXNU (Xiaomi Pad 6S Pro)</a>
+<a href="projects.html#community-ports">Community ports</a>
+<hr>
 <a href="https://www.reddit.com/r/hackios/">r/hackios</a>
 </nav>
 <div class="scrim" onclick="document.body.classList.remove('nav-open')"></div>
 <main><div class="page">
 <h1>How it works</h1>
-<p class="lead">If you have ever built a Hackintosh, the idea is similar: make Apple's software believe it runs on Apple hardware. On a phone the gap is much bigger, because nothing in an Android phone looks like an iPhone to iOS.</p>
+<p class="lead">If you have ever built a Hackintosh, the idea is similar: make Apple's software believe it runs on Apple hardware. On a phone or tablet the gap is much bigger, because nothing in an Android device looks like an iPhone to iOS. Every project on this site solves the same four problems: starting Apple's kernel, driving the hardware, getting a picture on the screen, and keeping iOS happy without the parts it expects.</p>
 
-<h2 id="drivers">Where the drivers come from</h2>
-<p>An Android driver is part of the Linux kernel. It is written against Linux's own functions, memory management and device model. XNU, Apple's kernel, works differently and has its own driver system called IOKit, so Linux driver code can't run inside it directly.</p>
-<p>The Android side is still the main source of information. Qualcomm and Xiaomi publish the Linux kernel source for the phone, and the phone carries a device tree that lists its hardware. Together they show where the touch controller sits, how the screen is set up and how the buttons are wired. ios-sweet uses that to write new, much smaller drivers for XNU that talk to the same chips. The hardware itself doesn't care which kernel is talking to it.</p>
-<p>The second half of every driver is making iOS accept it. iOS doesn't want "a Goodix touchscreen". It wants an Apple-style touch device that sends the events Apple's own touch hardware sends. So the touch driver reads finger positions from the Goodix chip and then reports them to iOS the way an iPhone would. The same goes for the buttons, the battery and the screen.</p>
-
-<h2 id="the-boot-chain">The boot chain</h2>
-<p>An iPhone starts with Apple's boot ROM and iBoot, which only load software Apple signed. A Snapdragon phone has Qualcomm's chain instead, ending in Xiaomi's bootloader (ABL), which expects an Android boot image. ios-sweet doesn't replace any of it. It hands the stock bootloader something that looks like an Android kernel:</p>
+<h2 id="the-boot-chain">Starting Apple's kernel</h2>
+<p>An iPhone starts with Apple's boot ROM and iBoot, which only load software Apple signed. An Android phone has the chip maker's chain instead (Qualcomm, Google or Samsung), ending in the phone maker's bootloader, which expects an Android boot image. None of the projects replace that chain. Most use <code>fastboot boot</code>, which starts an image once from RAM without writing it to the phone, and put something in that image that can start XNU. Samsung phones have no fastboot, so the Galaxy S7 port flashes its loader to the BOOT partition and Samsung's own bootloader starts it from there.</p>
+<p>There are two ways to do that right now:</p>
+<ul>
+<li><strong>A small boot shim (ios-sweet and most of its ports).</strong> The bootloader starts the shim as if it were Linux. The shim sets up memory the way XNU expects, hands it a description of the hardware in Apple's format (an Apple Device Tree, generated on the PC from the phone's own device tree) and jumps into the kernel. It's a tiny stand-in for iBoot.</li>
+<li><strong>UEFI plus a loader (HackiOS, UniXNU).</strong> The boot image holds a UEFI firmware for the device, ported from the Mu-Silicium project that's also used to run Windows on Android phones. UEFI then starts the project's own loader, which starts XNU. HackiOS's loader also stays around to talk to the PC over USB and to collect the kernel's log.</li>
+</ul>
+<p>Then the chain is the same for everyone:</p>
 <ol class="chain">
-<li><strong>Xiaomi bootloader (stock, unlocked).</strong> You run <code>fastboot boot shim-boot.img</code> from the PC. This boots the image once from RAM. Nothing is written to the boot partitions, so a normal reboot brings Android's boot chain back.</li>
-<li><strong>The shim.</strong> A small program that the bootloader starts as if it were Linux. It sets up memory the way XNU expects, unpacks the payload and jumps into Apple's kernel. Think of it as a tiny stand-in for iBoot.</li>
-<li><strong>XNU.</strong> Apple's kernel, built from Apple's public source (xnu-8796, the iOS 16 version) with about 80 patches for this phone. It gets a generated Apple Device Tree that describes the phone's hardware in Apple's format.</li>
-<li><strong>Storage.</strong> A new UFS driver finds the phone's internal flash. iOS lives in the partition Android used for user data, formatted as HFS+.</li>
-<li><strong>iOS.</strong> launchd starts, then the system daemons, then backboardd (input and display) and SpringBoard (the home screen). These are Apple's files from the iPhone X firmware.</li>
+<li><strong>XNU.</strong> Apple's kernel, built from Apple's public source with patches and new drivers for the device. The phone projects use xnu-8796, the iOS 16 generation; UniXNU uses xnu-10063 for iPadOS 17.</li>
+<li><strong>Storage.</strong> iOS needs its system volume somewhere. ios-sweet and most ports install it into the partition Android used for user data, which needs a storage driver for the phone's flash (UFS on most of them). HackiOS can instead send the system image into the phone's RAM over USB for each session, so nothing on the phone changes.</li>
+<li><strong>iOS.</strong> launchd starts, then the system daemons, then backboardd (input and display) and SpringBoard (the home screen). These are Apple's own files, from the iPhone X or iPhone 8 firmware (or, for UniXNU, the 2017 iPad Pro's).</li>
 </ol>
 
-<h2 id="why-an-iphone-x">Why an iPhone X?</h2>
-<p>Newer iPhones (XS and later) use a CPU feature called pointer authentication. Their whole system is compiled for it, and Snapdragon chips like this one don't have it. The iPhone X is the newest iPhone that runs iOS 16 without needing it. It also has no Home button, so iOS uses the swipe gestures, which suits a phone with a full touchscreen.</p>
-<p>The kernel tells iOS it is an iPhone X (model <code>iPhone10,3</code>). Some identity data is copied from the real iPhone X device tree so that iOS picks the right layout and features.</p>
+<h2 id="drivers">Where the drivers come from</h2>
+<p>An Android driver is part of the Linux kernel. It's written against Linux's own functions, memory management and device model. XNU works differently and has its own driver system called IOKit, so a Linux driver can't just be copied in.</p>
+<p>The Android side is still the main source of information. Phone makers publish the Linux kernel source for their phones, and every phone carries a device tree that lists its hardware. Together they show where the touch controller sits, how the screen is set up and how the buttons are wired. The projects use that to write new drivers for XNU that talk to the same chips. The hardware itself doesn't care which kernel is talking to it.</p>
+<p>For big drivers, rewriting everything is a lot of work, so there's a second option: run the Linux driver on top of a translation layer that provides the Linux functions it needs. HackiOS does this for Wi-Fi: Linux's ath11k driver runs on a layer based on FreeBSD's LinuxKPI. Other ports wrote their Wi-Fi drivers from scratch instead, like the Pixel (2016) port for its QCA6174 chip.</p>
+<p>The other half of every driver is making iOS accept it. iOS doesn't want "a Goodix touchscreen". It wants an Apple-style touch device that sends the events Apple's own touch hardware sends. So the touch driver reads finger positions from the chip and reports them to iOS the way an iPhone would. The same goes for the buttons, the battery, the speaker and the screen.</p>
 
-<h2 id="the-screen-without-a-gpu">The screen, without a GPU</h2>
-<p>When the bootloader shows its logo, it turns the display on and leaves an image buffer in memory that the panel keeps showing. ios-sweet reuses that buffer. iOS draws everything with its built-in software renderer on the CPU, and the kernel copies each finished frame into the bootloader's buffer.</p>
-<p>The phone's screen is 1080 x 2400. iOS is told it has an iPhone X panel (1125 x 2436) because iOS only lays itself out properly on screen sizes it knows. The picture is centered on the real panel.</p>
-<p>This is why it runs at roughly 20 to 30 frames per second. The Adreno GPU sits unused, because iOS would need a driver that speaks Apple's Metal graphics interface, and nobody has written one.</p>
+<h2 id="why-an-iphone-x">Why an iPhone X (or 8)?</h2>
+<p>Newer iPhones (XS and later) use a CPU feature called pointer authentication. Their whole system is compiled for it (the "arm64e" variant), and most of the chips these projects run on don't have it. The iPhone X and iPhone 8 share the newest chip generation (Apple A11) that runs iOS 16 without needing it, so the phone projects use their firmware: iOS 16.7.16 for ios-sweet and most ports, iOS 16.5 for HackiOS.</p>
+<p>Which of the two a project picks is mostly about the screen. The iPhone X firmware expects a tall screen without a Home button and uses swipe gestures, which suits most modern phones. The iPhone 8 firmware expects a 16:9 screen with a Home button, which matches older phones like the Pixel (2016), whose port uses it. Its smaller screen is also less work to draw. Either way, iOS has to be told which device it's on (<code>iPhone10,3</code> for the iPhone X, <code>iPhone10,1</code> for the iPhone 8) so it picks the right layout and features.</p>
+<p>iPads give a little more room. The 2017 iPad Pro (up to iPadOS 17) and the 7th-generation iPad (up to iPadOS 18) don't use pointer authentication either. UniXNU uses the 2017 iPad Pro's iPadOS 17 firmware on a Snapdragon tablet.</p>
 
-<h2 id="what-had-to-be-faked-or-switched-off">What had to be faked or switched off</h2>
+<h2 id="the-screen">The screen</h2>
+<p>When the bootloader (or UEFI) shows its logo, it turns the display on and leaves an image buffer in memory that the panel keeps showing. Every project starts by reusing that buffer instead of writing a display driver: iOS draws a frame, and the kernel puts it into that buffer. Some later take over the display controller themselves; the Pixel (2016) port flips between two buffers at up to 60 Hz, so there is no tearing.</p>
+<p>Drawing the frame is the hard part. iOS's interface is drawn by CoreAnimation, which normally runs on Apple's GPU through Metal. The projects have found several ways around that:</p>
 <ul>
-<li><strong>Security.</strong> iOS checks code signatures, runs apps in a sandbox and keeps encryption keys in the Secure Enclave. None of that hardware exists here, so code signing and the sandbox run in a permissive mode and the key store is a stub. Don't put personal data on it.</li>
-<li><strong>Activation.</strong> A new iPhone normally activates with Apple's servers. iOS has an offline path for this, and the device tree selects it. Apple's servers are never contacted.</li>
-<li><strong>Battery.</strong> The battery service reports a fixed 100 %.</li>
-<li><strong>Setup and watchdogs.</strong> The first-run setup is skipped, and a few daemons that crash without their hardware (the cellular modem, for example) are disabled.</li>
+<li><strong>ios-sweet and most ports</strong> use CoreAnimation's built-in software renderer, so the CPU draws everything. It works, at roughly 20 to 30 frames per second.</li>
+<li><strong>HackiOS</strong> drives the Adreno GPU with Mesa's open-source freedreno driver, ported to run under iOS, and gives CoreAnimation OpenGL ES to draw with. Metal for apps is the next step. They're translating Apple's shader format into Mesa's, and some of Apple's system shaders already run on the Adreno.</li>
+<li><strong>The Pixel (2016) and Redmi Note 12 ports</strong> do the same. The Redmi Note 12 port reuses HackiOS's code. The Pixel port did it on a much older Adreno 530 with its own kernel GPU driver, and wrote replacement shaders for the effects Apple only built for Metal (blurs, Control Center buttons).</li>
+<li><strong>The Pixel 4 port</strong> goes straight to Metal: a translation layer turns Metal calls into Vulkan, and Mesa's Turnip driver runs them on the Adreno 640. SpringBoard and the apps draw on the GPU.</li>
+<li><strong>UniXNU</strong> takes the same Metal-to-Vulkan route on the Adreno 740 in its tablet, on top of its own native kernel driver for the GPU, so the system interface is composited on the GPU.</li>
+</ul>
+<p>The phone's panel isn't iPhone-shaped either, and iOS only lays itself out properly on screen sizes it knows. So iOS is told it has a real iPhone's panel, and the picture is fitted onto the real one. ios-sweet presents an iPhone X panel (1125 x 2436) and centers it on the 1080 x 2400 screen. The Pixel (2016) and Pixel 4 ports let the GPU scale each frame to fit.</p>
+
+<h2 id="what-had-to-be-faked-or-switched-off">What gets faked or switched off</h2>
+<ul>
+<li><strong>Security.</strong> iOS checks code signatures, runs apps in a sandbox and keeps encryption keys in the Secure Enclave, a security chip. These phones have no Secure Enclave, and a modified system wouldn't pass Apple's checks, so code signing and the sandbox run in a permissive mode, and the key store is a small stand-in. Don't put personal data on it.</li>
+<li><strong>Apple's closed drivers.</strong> iOS talks to drivers Apple never published, like the framebuffer (IOMobileFramebuffer) and shared graphics memory (IOSurface). The projects write their own versions that answer the same calls.</li>
+<li><strong>Small fixes inside iOS.</strong> ios-sweet changes a few settings files in the system image (it skips first-run setup, for example), and most of its ports keep those changes. HackiOS leaves Apple's files untouched and instead loads small libraries of its own into a few system processes at runtime.</li>
+<li><strong>Activation.</strong> A new iPhone normally activates with Apple's servers. ios-sweet and its ports use an offline path that iOS already has for this, and HackiOS's library tells SpringBoard the phone is activated. Either way, Apple's servers aren't involved.</li>
 </ul>
 
-<h2 id="debugging-a-phone-with-no-serial-port">Debugging a phone with no serial port</h2>
-<p>Most kernel ports start with a serial console. This phone doesn't have a usable one. The kernel prints its messages on the screen and also keeps the last 4 MB of its log at the end of the storage partition. After a crash you boot a recovery (OrangeFox) and pull that log to the PC. Newer kernels can also stream the log live over USB as a network connection.</p>
-<p>Every boot, crash and fix is written down in <a href="https://github.com/dipa-studio/ios-sweet/blob/main/NOTES.md">NOTES.md</a>, and every kernel change is its own numbered patch in <a href="https://github.com/dipa-studio/ios-sweet/tree/main/xnu/patches">xnu/patches</a>.</p>
-<footer>hackiosx.dev documents the open-source <a href="https://github.com/dipa-studio/ios-sweet">ios-sweet</a> project. It is not affiliated with Apple. iOS is Apple's software and is not distributed here.</footer>
+<h2 id="debugging">Debugging without a serial port</h2>
+<p>Most kernel ports start with a serial console, and these phones don't have a usable one, so every project builds its own way to get the kernel log out. ios-sweet keeps the last 4 MB of the log on the phone's storage and streams it over USB as a network connection, which many ports reuse. HackiOS's loader stays in memory, takes the log back when a session ends and sends it to the PC. The Pixel 6a port even shows the log as a loop of QR codes that a webcam reads. Most projects keep detailed notes: ios-sweet's <a href="https://github.com/dipa-studio/ios-sweet/blob/main/NOTES.md">NOTES.md</a> logs every boot attempt, and HackiOS has a page on <a href="https://github.com/oosexgang/hackios-xnu-kernel/blob/main/docs/checks.md">how their own checks fooled them</a> that's worth reading before your first port.</p>
+<footer>hackiosx.dev documents open-source projects that run iOS on Android phones. It is not affiliated with Apple. iOS is Apple's software and is not distributed here.</footer>
 </div></main>
-<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a4da96b2fb85e1a5',t:'MTc5MjUyNjIxNg=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</body>
 </html>
